@@ -35,10 +35,11 @@ docker run --name tasks_bt_back_cnt \
   --restart on-failure \
   --network host \
   --env-file .env \
+  -e PORT=6065 \
   -v tasks_bt_uploads:/app/uploads \
   -d tasks_bt_back_img
 
-sleep 3
+sleep 8
 echo ""
 echo "=== docker ps ==="
 docker ps -a | grep tasks_bt_back || true
@@ -47,4 +48,6 @@ echo "=== logs ==="
 docker logs tasks_bt_back_cnt --tail 30 2>&1 || true
 echo ""
 echo "=== health ==="
-curl -sS http://127.0.0.1:6065/health || echo "HEALTH CHECK FAILED — смотри logs выше"
+curl -sS http://127.0.0.1:6065/health || echo "6065 FAILED"
+echo ""
+ss -ltnp 2>/dev/null | grep -E '6065|node' || true
