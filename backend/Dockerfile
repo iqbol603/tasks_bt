@@ -28,6 +28,6 @@ COPY --from=builder /app/dist ./dist
 
 RUN mkdir -p uploads
 
-EXPOSE 3001
+EXPOSE 6065
 
 CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]

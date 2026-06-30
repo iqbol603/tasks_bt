@@ -1,57 +1,100 @@
-# Деплой на VPS (Docker)
+# Деплой на VPS (простой Docker)
 
-Порты:
+Порты на сервере:
 - **Frontend:** `6067`
-- **Backend API:** `6065` (прямой доступ, опционально)
-- Через фронт: `http://IP:6067` (API проксируется как `/api`)
+- **Backend:** `6065`
 
-## 1. На сервере
+> `PORT=6065` в `backend/.env` — это порт **внутри контейнера**.  
+> На хосте он проброшен как `6065:6065`, поэтому **не конфликтует** с другими проектами на `3001`.
+
+## 1. Клон и настройка
 
 ```bash
 cd /home/marketing
 git clone https://github.com/iqbol603/tasks_bt.git
 cd tasks_bt
-```
 
-## 2. Настрой `.env`
-
-```bash
 cp backend/.env.prod.example backend/.env
 nano backend/.env
 ```
 
-Обязательно укажи:
-- `DATABASE_URL`
-- `JWT_SECRET`, `JWT_REFRESH_SECRET`
-- `CORS_ORIGIN=http://ВАШ_IP:6067`
-- `APP_URL=http://ВАШ_IP:6067`
+В `.env` обязательно:
 
-## 3. Запуск
+```env
+PORT=6065
+CORS_ORIGIN="http://217.11.176.136:6067"
+APP_URL="http://217.11.176.136:6067"
+DATABASE_URL="mysql://..."
+JWT_SECRET="..."
+JWT_REFRESH_SECRET="..."
+```
+
+## 2. Запуск (как у online_chat)
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+cd /home/marketing/tasks_bt
+chmod +x scripts/*.sh
+sh scripts/deploy.sh
+```
+
+Или по отдельности:
+
+```bash
+sh scripts/deploy-backend.sh
+sh scripts/deploy-frontend.sh
+```
+
+## 3. Ручные команды (без скриптов)
+
+### Backend
+
+```bash
+cd /home/marketing/tasks_bt/backend
+docker network create tasks_bt_net 2>/dev/null || true
+docker stop tasks_bt_back_cnt || true
+docker rm tasks_bt_back_cnt || true
+docker rmi tasks_bt_back_img || true
+docker build -t tasks_bt_back_img .
+docker run --name tasks_bt_back_cnt --restart on-failure \
+  --network tasks_bt_net -p 6065:6065 \
+  --env-file .env -v tasks_bt_uploads:/app/uploads \
+  -d tasks_bt_back_img
+```
+
+### Frontend
+
+```bash
+cd /home/marketing/tasks_bt/frontend
+docker stop tasks_bt_front_cnt || true
+docker rm tasks_bt_front_cnt || true
+docker rmi tasks_bt_front_img || true
+docker build -t tasks_bt_front_img .
+docker run --name tasks_bt_front_cnt --restart on-failure \
+  --network tasks_bt_net -p 6067:80 \
+  -d tasks_bt_front_img
 ```
 
 ## 4. Проверка
 
 ```bash
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs -f backend
+docker ps | grep tasks_bt
 curl http://localhost:6065/health
+docker logs tasks_bt_back_cnt
+docker logs tasks_bt_front_cnt
 ```
 
-Открой в браузере: `http://ВАШ_IP:6067`
+Браузер: `http://217.11.176.136:6067`
 
-## 5. Обновление после изменений
+## 5. Обновление
 
 ```bash
 cd /home/marketing/tasks_bt
 git pull
-docker compose -f docker-compose.prod.yml up -d --build
+sh scripts/deploy.sh
 ```
 
 ## 6. Остановка
 
 ```bash
-docker compose -f docker-compose.prod.yml down
+docker stop tasks_bt_front_cnt tasks_bt_back_cnt
 ```
