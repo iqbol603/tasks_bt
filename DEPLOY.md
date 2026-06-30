@@ -22,7 +22,7 @@ nano backend/.env
 
 ```env
 PORT=6065
-DATABASE_URL="mysql://USER:PASSWORD@host.docker.internal:3306/rps_tasks"
+DATABASE_URL="mysql://USER:PASSWORD@127.0.0.1:3306/rps_tasks"
 CORS_ORIGIN="http://217.11.176.136:6067"
 APP_URL="http://217.11.176.136:6067"
 JWT_SECRET="..."
@@ -59,7 +59,7 @@ docker rm tasks_bt_back_cnt || true
 docker rmi tasks_bt_back_img || true
 docker build -t tasks_bt_back_img .
 docker run --name tasks_bt_back_cnt --restart on-failure \
-  --network tasks_bt_net -p 6065:6065 \
+  --network host \
   --env-file .env -v tasks_bt_uploads:/app/uploads \
   -d tasks_bt_back_img
 ```
@@ -73,7 +73,8 @@ docker rm tasks_bt_front_cnt || true
 docker rmi tasks_bt_front_img || true
 docker build -t tasks_bt_front_img .
 docker run --name tasks_bt_front_cnt --restart on-failure \
-  --network tasks_bt_net -p 6067:80 \
+  --network tasks_bt_net --add-host=host.docker.internal:host-gateway \
+  -p 6067:80 \
   -d tasks_bt_front_img
 ```
 

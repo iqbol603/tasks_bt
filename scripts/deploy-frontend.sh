@@ -14,6 +14,7 @@ docker build -t tasks_bt_front_img .
 docker run --name tasks_bt_front_cnt \
   --restart on-failure \
   --network tasks_bt_net \
+  --add-host=host.docker.internal:host-gateway \
   -p 6067:80 \
   -d tasks_bt_front_img
 

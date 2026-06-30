@@ -11,6 +11,9 @@ export function getTelegramBot(): TelegramBot | null {
   if (!TOKEN) return null;
   if (!bot) {
     bot = new TelegramBot(TOKEN, { polling: true });
+    bot.on('polling_error', (err) => {
+      console.error('Telegram polling error:', err.message);
+    });
   }
   return bot;
 }
