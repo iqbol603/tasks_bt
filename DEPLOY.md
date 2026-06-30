@@ -22,12 +22,15 @@ nano backend/.env
 
 ```env
 PORT=6065
+DATABASE_URL="mysql://USER:PASSWORD@host.docker.internal:3306/rps_tasks"
 CORS_ORIGIN="http://217.11.176.136:6067"
 APP_URL="http://217.11.176.136:6067"
-DATABASE_URL="mysql://..."
 JWT_SECRET="..."
 JWT_REFRESH_SECRET="..."
 ```
+
+> Если MySQL на **этом же сервере**, используй `host.docker.internal` вместо IP.  
+> Из Docker `127.0.0.1` и внешний IP часто не работают.
 
 ## 2. Запуск (как у online_chat)
 
