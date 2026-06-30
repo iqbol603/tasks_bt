@@ -1,6 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const POLLING = process.env.TELEGRAM_POLLING !== 'false';
 let bot: TelegramBot | null = null;
 
 export function isTelegramConfigured(): boolean {
@@ -10,7 +11,7 @@ export function isTelegramConfigured(): boolean {
 export function getTelegramBot(): TelegramBot | null {
   if (!TOKEN) return null;
   if (!bot) {
-    bot = new TelegramBot(TOKEN, { polling: true });
+    bot = new TelegramBot(TOKEN, { polling: POLLING });
     bot.on('polling_error', (err) => {
       console.error('Telegram polling error:', err.message);
     });
