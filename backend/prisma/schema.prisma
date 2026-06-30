@@ -1,0 +1,311 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  EXECUTOR
+  OBSERVER
+  HR
+  DIRECTOR
+}
+
+enum TaskStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+  TEMPLATE
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  avatarUrl    String?  @map("avatar_url")
+  role         Role     @default(EXECUTOR)
+  department   String?
+  telegramChatId String?  @map("telegram_chat_id")
+  telegramLinkCode String? @map("telegram_link_code")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  createdProjects  Project[]       @relation("ProjectCreator")
+  projectMembers   ProjectMember[]
+  assignedTasks    Task[]          @relation("TaskAssignee")
+  createdTasks     Task[]          @relation("TaskCreator")
+  watchingTasks    TaskWatcher[]
+  comments         TaskComment[]
+  taskHistory      TaskHistory[]
+  notifications    Notification[]
+  refreshTokens    RefreshToken[]
+  timeEntries      TimeEntry[]
+  activityLogs     UserActivityLog[]
+  dailyReports     DailyReport[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique @db.VarChar(512)
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  color       String        @default("#3B82F6")
+  status      ProjectStatus @default(ACTIVE)
+  creatorId   String        @map("creator_id")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  creator User            @relation("ProjectCreator", fields: [creatorId], references: [id])
+  members ProjectMember[]
+  tasks   Task[]
+  tags    Tag[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  userId    String   @map("user_id")
+  role      Role     @default(EXECUTOR)
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  projectId   String       @map("project_id")
+  assigneeId  String?      @map("assignee_id")
+  requestedAssigneeId String? @map("requested_assignee_id")
+  isAssignmentApproved Boolean @default(true) @map("is_assignment_approved")
+  creatorId   String       @map("creator_id")
+  parentId    String?      @map("parent_id")
+  dueDate     DateTime?    @map("due_date")
+  startDate   DateTime?    @map("start_date")
+  assignedAt  DateTime?    @map("assigned_at")
+  acceptedAt  DateTime?    @map("accepted_at")
+  position    Int          @default(0)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee   User?           @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  creator    User            @relation("TaskCreator", fields: [creatorId], references: [id])
+  parent     Task?           @relation("SubTasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks   Task[]          @relation("SubTasks")
+  watchers   TaskWatcher[]
+  comments   TaskComment[]
+  files      TaskFile[]
+  history    TaskHistory[]
+  checklists TaskChecklist[]
+  tags       TaskTag[]
+  timeEntries TimeEntry[]
+
+  @@index([projectId, status])
+  @@index([assigneeId])
+  @@index([dueDate])
+  @@map("tasks")
+}
+
+model TaskWatcher {
+  id     String @id @default(cuid())
+  taskId String @map("task_id")
+  userId String @map("user_id")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@map("task_watchers")
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String   @map("task_id")
+  authorId  String   @map("author_id")
+  content   String
+  isEdited  Boolean  @default(false) @map("is_edited")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@map("task_comments")
+}
+
+model TaskFile {
+  id           String   @id @default(cuid())
+  taskId       String   @map("task_id")
+  filename     String
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  size         Int
+  version      Int      @default(1)
+  path         String
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("task_files")
+}
+
+model TaskHistory {
+  id        String   @id @default(cuid())
+  taskId    String   @map("task_id")
+  userId    String   @map("user_id")
+  action    String
+  field     String?
+  oldValue  String?  @map("old_value")
+  newValue  String?  @map("new_value")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([taskId, createdAt])
+  @@map("task_history")
+}
+
+model TaskChecklist {
+  id        String   @id @default(cuid())
+  taskId    String   @map("task_id")
+  title     String
+  isDone    Boolean  @default(false) @map("is_done")
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("task_checklists")
+}
+
+model Tag {
+  id        String @id @default(cuid())
+  name      String
+  color     String @default("#6B7280")
+  projectId String @map("project_id")
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks    TaskTag[]
+
+  @@unique([projectId, name])
+  @@map("tags")
+}
+
+model TaskTag {
+  taskId String @map("task_id")
+  tagId  String @map("tag_id")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+  @@map("task_tags")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false) @map("is_read")
+  link      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model TimeEntry {
+  id          String    @id @default(cuid())
+  taskId      String    @map("task_id")
+  userId      String    @map("user_id")
+  description String?
+  startedAt   DateTime  @map("started_at")
+  endedAt     DateTime? @map("ended_at")
+  duration    Int?
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("time_entries")
+}
+
+model UserActivityLog {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  action     String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("user_activity_logs")
+}
+
+model DailyReport {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  reportDate DateTime @map("report_date") @db.Date
+  content    String   @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reportDate])
+  @@index([reportDate])
+  @@map("daily_reports")
+}

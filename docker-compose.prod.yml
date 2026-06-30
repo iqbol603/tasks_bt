@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tasks-bt-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      PORT: "3001"
+      UPLOAD_DIR: "/app/uploads"
+    ports:
+      - "6065:3001"
+    volumes:
+      - backend_uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: tasks-bt-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "6067:80"
+
+volumes:
+  backend_uploads:
