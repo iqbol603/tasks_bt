@@ -5,6 +5,11 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, canManageProjects, type AuthRequest } from '../middleware/auth.js';
 import { getAccessibleProjectIds } from '../lib/helpers.js';
 import { paramId } from '../lib/params.js';
+import {
+  canHavePersonalProject,
+  getOrCreatePersonalProject,
+  personalProjectVisibilityFilter,
+} from '../lib/personal-project.js';
 
 const router = Router();
 
@@ -19,10 +24,19 @@ const createSchema = z.object({
 
 router.get('/', async (req: AuthRequest, res, next) => {
   try {
+    const user = req.user!;
+
+    if (canHavePersonalProject(user.role as Role)) {
+      await getOrCreatePersonalProject(user.userId, user.role as Role);
+    }
+
     const projectIds = await getAccessibleProjectIds(req.user);
     const status = req.query.status as string | undefined;
 
-    const where: Record<string, unknown> = projectIds ? { id: { in: projectIds } } : {};
+    const where: Record<string, unknown> = {
+      ...personalProjectVisibilityFilter(user.userId, user.role),
+    };
+    if (projectIds) where.id = { in: projectIds };
     if (status) where.status = status;
 
     const projects = await prisma.project.findMany({
@@ -135,7 +149,18 @@ router.delete('/:id', async (req: AuthRequest, res, next) => {
       return;
     }
 
-    await prisma.project.delete({ where: { id: paramId(req) } });
+    const id = paramId(req);
+    const project = await prisma.project.findUnique({ where: { id } });
+    if (!project) {
+      res.status(404).json({ error: 'Проект не найден' });
+      return;
+    }
+    if (project.isPersonal) {
+      res.status(400).json({ error: 'Нельзя удалить личный проект сотрудника' });
+      return;
+    }
+
+    await prisma.project.delete({ where: { id } });
     res.json({ message: 'Проект удалён' });
   } catch (err) {
     next(err);

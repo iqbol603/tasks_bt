@@ -87,6 +87,7 @@ model Project {
   description String?
   color       String        @default("#3B82F6")
   status      ProjectStatus @default(ACTIVE)
+  isPersonal  Boolean       @default(false) @map("is_personal")
   creatorId   String        @map("creator_id")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")

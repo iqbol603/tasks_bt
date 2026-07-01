@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
@@ -24,6 +24,7 @@ interface KanbanColumn {
 interface Project {
   id: string;
   name: string;
+  isPersonal?: boolean;
 }
 
 interface User {
@@ -38,7 +39,7 @@ function toIsoDate(date: string, time: string) {
 
 export function KanbanPage() {
   const queryClient = useQueryClient();
-  const [projectId, setProjectId] = useState('seed-project-1');
+  const [projectId, setProjectId] = useState('');
   const [draggedTask, setDraggedTask] = useState<{ id: string; status: string } | null>(null);
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -49,6 +50,13 @@ export function KanbanPage() {
     queryKey: ['projects'],
     queryFn: () => api.getProjects() as Promise<Project[]>,
   });
+
+  useEffect(() => {
+    if (!projectId && projects.length > 0) {
+      const personal = projects.find((p) => p.isPersonal);
+      setProjectId(personal?.id ?? projects[0].id);
+    }
+  }, [projects, projectId]);
 
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ['users'],

@@ -14,6 +14,7 @@ import {
   isDeletedUserEmail,
   revokeUserSessions,
 } from '../lib/user-management.js';
+import { getOrCreatePersonalProject, canHavePersonalProject } from '../lib/personal-project.js';
 
 const router = Router();
 
@@ -54,6 +55,10 @@ router.post('/', async (req: AuthRequest, res, next) => {
         department: data.department,
       },
     });
+
+    if (canHavePersonalProject(user.role)) {
+      await getOrCreatePersonalProject(user.id, user.role);
+    }
 
     res.status(201).json({
       ...pickUser(user),

@@ -40,7 +40,9 @@ export function TaskFormDialog({
 }: TaskFormDialogProps) {
   const { user } = useAuth();
   const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR'].includes(user?.role ?? '');
-  const allowedStatuses = isManager
+  const personalProject = projects.find((p) => p.isPersonal || p.name === 'Ежедневные задачи');
+  const isPersonalSelected = !!personalProject && form.projectId === personalProject.id;
+  const allowedStatuses = isManager || isPersonalSelected
     ? STATUSES
     : STATUSES.filter((s) => s !== 'DONE');
 
@@ -56,9 +58,9 @@ export function TaskFormDialog({
     ...initial,
   });
 
-  const { data: projects = [] } = useQuery<Array<{ id: string; name: string }>>({
+  const { data: projects = [] } = useQuery<Array<{ id: string; name: string; isPersonal?: boolean }>>({
     queryKey: ['projects'],
-    queryFn: () => api.getProjects() as Promise<Array<{ id: string; name: string }>>,
+    queryFn: () => api.getProjects() as Promise<Array<{ id: string; name: string; isPersonal?: boolean }>>,
     enabled: open,
   });
 
@@ -73,11 +75,18 @@ export function TaskFormDialog({
       const due = initial?.dueDate
         ? splitDateTime(initial.dueDate.includes('T') ? initial.dueDate : `${initial.dueDate}T12:00:00`)
         : { date: initial?.dueDate ?? '', time: initial?.dueTime ?? '18:00' };
+      const personalProject = projects.find((p) => p.isPersonal || p.name === 'Ежедневные задачи');
+      const defaultProjectId = initial?.projectId ?? personalProject?.id ?? projects[0]?.id ?? '';
+      const defaultAssigneeId = initial?.assigneeId ?? (
+        !isManager && personalProject && defaultProjectId === personalProject.id && user?.id
+          ? user.id
+          : ''
+      );
       setForm({
         title: initial?.title ?? '',
         description: initial?.description ?? '',
-        projectId: initial?.projectId ?? projects[0]?.id ?? '',
-        assigneeId: initial?.assigneeId ?? '',
+        projectId: defaultProjectId,
+        assigneeId: defaultAssigneeId,
         status: initial?.status ?? 'TODO',
         priority: initial?.priority ?? 'MEDIUM',
         dueDate: due.date,
@@ -85,7 +94,7 @@ export function TaskFormDialog({
         parentId: initial?.parentId,
       });
     }
-  }, [open, initial, projects]);
+  }, [open, initial, projects, isManager, user?.id]);
 
   if (!open) return null;
 
@@ -119,9 +128,16 @@ export function TaskFormDialog({
           >
             <option value="">Выберите проект</option>
             {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id}>
+                {p.name}{p.isPersonal ? ' (личный)' : ''}
+              </option>
             ))}
           </select>
+          {projects.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Проекты загружаются… Личный проект «Ежедневные задачи» создаётся автоматически.
+            </p>
+          )}
           <select
             value={form.assigneeId}
             onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}

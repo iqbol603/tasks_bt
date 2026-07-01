@@ -13,6 +13,7 @@ import { logActivity, isManagerRole } from '../lib/activity.js';
 import { notifyIfOverdue } from '../lib/deadlines.js';
 import { paramId } from '../lib/params.js';
 import { formatLocalDateTime } from '../lib/timezone.js';
+import { isOwnPersonalProjectTask } from '../lib/personal-project.js';
 
 const router = Router();
 
@@ -241,6 +242,17 @@ router.post('/', async (req: AuthRequest, res, next) => {
       return;
     }
 
+    const project = await prisma.project.findUnique({
+      where: { id: data.projectId },
+      select: { isPersonal: true, creatorId: true },
+    });
+    const isPersonalOwn =
+      project?.isPersonal === true && project.creatorId === req.user!.userId;
+
+    if (isPersonalOwn && !data.parentId && !data.assigneeId) {
+      data.assigneeId = req.user!.userId;
+    }
+
     // Подзадача обязана иметь выбранного исполнителя (или запрос на исполнителя)
     if (data.parentId && !data.assigneeId) {
       res.status(400).json({ error: 'Для подзадачи обязательно назначить исполнителя' });
@@ -333,13 +345,19 @@ router.put('/:id', async (req: AuthRequest, res, next) => {
     const data = updateSchema.parse(req.body);
     const isManager = isManagerRole(req.user!.role);
     const userId = req.user!.userId;
+    const ownPersonalTask = await isOwnPersonalProjectTask(
+      existing.projectId,
+      userId,
+      existing.assigneeId,
+      existing.creatorId,
+    );
 
     if (data.status !== undefined) {
-      if (data.status === TaskStatus.DONE && !isManager) {
+      if (data.status === TaskStatus.DONE && !isManager && !ownPersonalTask) {
         res.status(403).json({ error: 'Исполнитель не может закрыть задачу. Отправьте её на проверку.' });
         return;
       }
-      if (data.status === TaskStatus.DONE && existing.status !== TaskStatus.REVIEW) {
+      if (data.status === TaskStatus.DONE && existing.status !== TaskStatus.REVIEW && !ownPersonalTask) {
         res.status(400).json({ error: 'Задачу можно закрыть только после проверки (статус «На проверке»)' });
         return;
       }

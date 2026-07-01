@@ -14,6 +14,7 @@ interface Project {
   description: string | null;
   color: string;
   status: string;
+  isPersonal?: boolean;
   _count: { tasks: number; members: number };
 }
 
@@ -198,7 +199,7 @@ export function ProjectsPage() {
                     <div className="h-4 w-4 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
                     <CardTitle className="text-base truncate">{project.name}</CardTitle>
                   </div>
-                  {canManage && (
+                  {canManage && !project.isPersonal && (
                     <div className="flex items-center gap-1 shrink-0">
                       <Button variant="ghost" size="icon" title="Редактировать" onClick={() => openEdit(project)}>
                         <Pencil className="h-4 w-4" />
@@ -240,6 +241,7 @@ export function ProjectsPage() {
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {PROJECT_STATUS_LABELS[project.status] ?? project.status}
+                  {project.isPersonal && ' · Личный проект'}
                 </span>
               </CardHeader>
               <CardContent>
