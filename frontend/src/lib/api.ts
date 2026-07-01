@@ -207,6 +207,18 @@ class ApiClient {
     return this.request(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
   }
 
+  deactivateUser(id: string) {
+    return this.request(`/users/${id}/deactivate`, { method: 'POST' });
+  }
+
+  activateUser(id: string) {
+    return this.request(`/users/${id}/activate`, { method: 'POST' });
+  }
+
+  deleteUser(id: string) {
+    return this.request(`/users/${id}`, { method: 'DELETE' });
+  }
+
   getNotifications() {
     return this.request('/notifications');
   }

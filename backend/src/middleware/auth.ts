@@ -1,12 +1,13 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { Role } from '@prisma/client';
 import { verifyAccessToken, type TokenPayload } from '../lib/jwt.js';
+import { prisma } from '../lib/prisma.js';
 
 export interface AuthRequest extends Request {
   user?: TokenPayload;
 }
 
-export function authenticate(req: AuthRequest, res: Response, next: NextFunction): void {
+export async function authenticate(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Требуется авторизация' });
@@ -16,6 +17,17 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
   try {
     const token = header.slice(7);
     req.user = verifyAccessToken(token);
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { isActive: true },
+    });
+
+    if (!user?.isActive) {
+      res.status(403).json({ error: 'Аккаунт заблокирован. Обратитесь к администратору.' });
+      return;
+    }
+
     next();
   } catch {
     res.status(401).json({ error: 'Недействительный или просроченный токен' });

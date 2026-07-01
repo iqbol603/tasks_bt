@@ -6,6 +6,14 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, canManageUsers, type AuthRequest } from '../middleware/auth.js';
 import { pickUser } from '../lib/helpers.js';
 import { paramId } from '../lib/params.js';
+import {
+  activateUser,
+  assertCanModifyUser,
+  deactivateUser,
+  deleteUserAccount,
+  isDeletedUserEmail,
+  revokeUserSessions,
+} from '../lib/user-management.js';
 
 const router = Router();
 
@@ -79,6 +87,9 @@ router.get('/', async (req: AuthRequest, res, next) => {
     }
 
     const users = await prisma.user.findMany({
+      where: {
+        email: { not: { endsWith: '@removed.local' } },
+      },
       orderBy: { lastName: 'asc' },
       select: {
         id: true,
@@ -181,12 +192,100 @@ router.patch('/:id', async (req: AuthRequest, res, next) => {
       updateData.passwordHash = await bcrypt.hash(password, 10);
     }
 
+    if (data.isActive === false) {
+      await revokeUserSessions(id);
+    }
+
     const user = await prisma.user.update({
       where: { id },
       data: updateData,
     });
     res.json(pickUser(user));
   } catch (err) {
+    next(err);
+  }
+});
+
+function handleUserActionError(err: unknown, res: import('express').Response): boolean {
+  if (!(err instanceof Error)) return false;
+
+  switch (err.message) {
+    case 'SELF':
+      res.status(400).json({ error: 'Нельзя выполнить действие над собственным аккаунтом' });
+      return true;
+    case 'NOT_FOUND':
+      res.status(404).json({ error: 'Пользователь не найден' });
+      return true;
+    case 'DELETED':
+      res.status(400).json({ error: 'Сотрудник уже удалён' });
+      return true;
+    case 'FORBIDDEN':
+      res.status(403).json({ error: 'Недостаточно прав для этого сотрудника' });
+      return true;
+    case 'LAST_ADMIN':
+      res.status(400).json({ error: 'Нельзя заблокировать или удалить последнего администратора' });
+      return true;
+    default:
+      return false;
+  }
+}
+
+router.post('/:id/deactivate', async (req: AuthRequest, res, next) => {
+  try {
+    if (!canManageUsers(req.user!.role)) {
+      res.status(403).json({ error: 'Только администратор или HR может блокировать сотрудников' });
+      return;
+    }
+
+    const id = paramId(req);
+    await assertCanModifyUser(req.user!.userId, req.user!.role as Role, id);
+    const user = await deactivateUser(id);
+
+    res.json({ ...pickUser(user), message: 'Сотрудник заблокирован' });
+  } catch (err) {
+    if (handleUserActionError(err, res)) return;
+    next(err);
+  }
+});
+
+router.post('/:id/activate', async (req: AuthRequest, res, next) => {
+  try {
+    if (!canManageUsers(req.user!.role)) {
+      res.status(403).json({ error: 'Только администратор или HR может разблокировать сотрудников' });
+      return;
+    }
+
+    const id = paramId(req);
+    await assertCanModifyUser(req.user!.userId, req.user!.role as Role, id);
+    const user = await activateUser(id);
+
+    res.json({ ...pickUser(user), message: 'Сотрудник разблокирован' });
+  } catch (err) {
+    if (handleUserActionError(err, res)) return;
+    next(err);
+  }
+});
+
+router.delete('/:id', async (req: AuthRequest, res, next) => {
+  try {
+    if (!canManageUsers(req.user!.role)) {
+      res.status(403).json({ error: 'Только администратор или HR может удалять сотрудников' });
+      return;
+    }
+
+    const id = paramId(req);
+    const target = await assertCanModifyUser(req.user!.userId, req.user!.role as Role, id);
+
+    if (isDeletedUserEmail(target.email)) {
+      res.status(400).json({ error: 'Сотрудник уже удалён' });
+      return;
+    }
+
+    await deleteUserAccount(id);
+
+    res.json({ message: 'Сотрудник удалён' });
+  } catch (err) {
+    if (handleUserActionError(err, res)) return;
     next(err);
   }
 });

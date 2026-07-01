@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, MessageCircle, Pencil } from 'lucide-react';
+import { Plus, MessageCircle, Pencil, Ban, CheckCircle, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -33,6 +34,7 @@ const emptyForm = {
 
 export function TeamPage() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<TeamMember | null>(null);
@@ -46,14 +48,20 @@ export function TeamPage() {
     enabled: canManage,
   });
 
+  const invalidateTeam = () => {
+    queryClient.invalidateQueries({ queryKey: ['team'] });
+    queryClient.invalidateQueries({ queryKey: ['users'] });
+  };
+
   const createMutation = useMutation({
     mutationFn: () => api.createUser(form),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['team'] });
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      invalidateTeam();
       setShowForm(false);
       setForm(emptyForm);
+      showToast({ title: 'Сотрудник создан', message: '' });
     },
+    onError: (err: Error) => showToast({ title: 'Ошибка', message: err.message }),
   });
 
   const updateMutation = useMutation({
@@ -68,11 +76,40 @@ export function TeamPage() {
         ...(form.password ? { password: form.password } : {}),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['team'] });
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      invalidateTeam();
       setEditing(null);
       setForm(emptyForm);
+      showToast({ title: 'Изменения сохранены', message: '' });
     },
+    onError: (err: Error) => showToast({ title: 'Ошибка', message: err.message }),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: (id: string) => api.deactivateUser(id),
+    onSuccess: () => {
+      invalidateTeam();
+      showToast({ title: 'Сотрудник заблокирован', message: 'Вход в систему запрещён' });
+    },
+    onError: (err: Error) => showToast({ title: 'Ошибка', message: err.message }),
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: (id: string) => api.activateUser(id),
+    onSuccess: () => {
+      invalidateTeam();
+      showToast({ title: 'Сотрудник разблокирован', message: '' });
+    },
+    onError: (err: Error) => showToast({ title: 'Ошибка', message: err.message }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteUser(id),
+    onSuccess: () => {
+      invalidateTeam();
+      setEditing(null);
+      showToast({ title: 'Сотрудник удалён', message: '' });
+    },
+    onError: (err: Error) => showToast({ title: 'Ошибка', message: err.message }),
   });
 
   const openEdit = (m: TeamMember) => {
@@ -89,16 +126,39 @@ export function TeamPage() {
     });
   };
 
+  const handleDelete = (m: TeamMember) => {
+    const name = `${m.firstName} ${m.lastName}`;
+    if (!window.confirm(`Удалить сотрудника «${name}»?\n\nАккаунт будет заблокирован, email освобождён, задачи и история сохранятся.`)) {
+      return;
+    }
+    deleteMutation.mutate(m.id);
+  };
+
+  const handleDeactivate = (m: TeamMember) => {
+    const name = `${m.firstName} ${m.lastName}`;
+    if (!window.confirm(`Заблокировать «${name}»?\n\nСотрудник не сможет войти в систему.`)) {
+      return;
+    }
+    deactivateMutation.mutate(m.id);
+  };
+
   if (!canManage) {
     return <div className="text-muted-foreground">Раздел доступен только администратору и HR</div>;
   }
+
+  const isBusy =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    deactivateMutation.isPending ||
+    activateMutation.isPending ||
+    deleteMutation.isPending;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Сотрудники</h1>
-          <p className="text-muted-foreground">Создание и редактирование команды</p>
+          <p className="text-muted-foreground">Создание, блокировка и удаление команды</p>
         </div>
         <Button onClick={() => { setShowForm(!showForm); setEditing(null); }}>
           <Plus className="h-4 w-4" />
@@ -147,7 +207,7 @@ export function TeamPage() {
                 disabled={
                   !form.email || !form.firstName || !form.lastName ||
                   (!editing && !form.password) ||
-                  createMutation.isPending || updateMutation.isPending
+                  isBusy
                 }
               >
                 {editing ? 'Сохранить' : 'Создать'}
@@ -164,32 +224,71 @@ export function TeamPage() {
         <div className="text-muted-foreground">Загрузка...</div>
       ) : (
         <div className="space-y-2">
-          {members.map((m) => (
-            <Card key={m.id} className={!m.isActive ? 'opacity-60' : ''}>
-              <CardContent className="flex items-center justify-between p-4 flex-wrap gap-3">
-                <div>
-                  <p className="font-medium">
-                    {m.firstName} {m.lastName}
-                    {!m.isActive && <span className="text-xs text-destructive ml-2">(неактивен)</span>}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{m.email}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {ROLE_LABELS[m.role]}{m.department ? ` · ${m.department}` : ''}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`flex items-center gap-1 text-xs ${m.telegramLinked ? 'text-green-600' : 'text-muted-foreground'}`}>
-                    <MessageCircle className="h-3.5 w-3.5" />
-                    {m.telegramLinked ? 'TG ✓' : 'TG ✗'}
-                  </span>
-                  <Button variant="outline" size="sm" onClick={() => openEdit(m)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                    Изменить
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {members.map((m) => {
+            const isSelf = m.id === user?.id;
+
+            return (
+              <Card key={m.id} className={!m.isActive ? 'opacity-60 border-destructive/30' : ''}>
+                <CardContent className="flex items-center justify-between p-4 flex-wrap gap-3">
+                  <div>
+                    <p className="font-medium">
+                      {m.firstName} {m.lastName}
+                      {isSelf && <span className="text-xs text-muted-foreground ml-2">(вы)</span>}
+                      {!m.isActive && <span className="text-xs text-destructive ml-2">(заблокирован)</span>}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{m.email}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {ROLE_LABELS[m.role]}{m.department ? ` · ${m.department}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`flex items-center gap-1 text-xs ${m.telegramLinked ? 'text-green-600' : 'text-muted-foreground'}`}>
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      {m.telegramLinked ? 'TG ✓' : 'TG ✗'}
+                    </span>
+                    <Button variant="outline" size="sm" onClick={() => openEdit(m)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                      Изменить
+                    </Button>
+                    {!isSelf && m.isActive && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeactivate(m)}
+                        disabled={isBusy}
+                      >
+                        <Ban className="h-3.5 w-3.5" />
+                        Заблокировать
+                      </Button>
+                    )}
+                    {!isSelf && !m.isActive && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => activateMutation.mutate(m.id)}
+                        disabled={isBusy}
+                      >
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        Разблокировать
+                      </Button>
+                    )}
+                    {!isSelf && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleDelete(m)}
+                        disabled={isBusy}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Удалить
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

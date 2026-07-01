@@ -24,8 +24,13 @@ router.post('/login', async (req, res, next) => {
     const { email, password } = loginSchema.parse(req.body);
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !user.isActive) {
+    if (!user) {
       res.status(401).json({ error: 'Неверный email или пароль' });
+      return;
+    }
+
+    if (!user.isActive) {
+      res.status(403).json({ error: 'Аккаунт заблокирован. Обратитесь к администратору.' });
       return;
     }
 
@@ -72,7 +77,7 @@ router.post('/refresh', async (req, res, next) => {
     const payload = verifyRefreshToken(refreshToken);
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user || !user.isActive) {
-      res.status(401).json({ error: 'Пользователь не найден' });
+      res.status(401).json({ error: 'Сессия недействительна' });
       return;
     }
 
@@ -113,8 +118,8 @@ router.post('/logout', authenticate, async (req: AuthRequest, res, next) => {
 router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
-    if (!user) {
-      res.status(404).json({ error: 'Пользователь не найден' });
+    if (!user || !user.isActive) {
+      res.status(403).json({ error: 'Аккаунт заблокирован. Обратитесь к администратору.' });
       return;
     }
     res.json(pickUser(user));
