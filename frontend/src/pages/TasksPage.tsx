@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
-import { api } from '../lib/api';
+import { Plus, X } from 'lucide-react';
+import { api, type User } from '../lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { StatusBadge, PriorityBadge } from '@/components/ui/Badge';
@@ -19,17 +20,45 @@ interface Task {
   assignee?: { firstName: string; lastName: string };
 }
 
+interface ProjectOption {
+  id: string;
+  name: string;
+  isPersonal?: boolean;
+  creator?: { firstName: string; lastName: string };
+}
+
 export function TasksPage() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const search = searchParams.get('search') ?? '';
   const [showForm, setShowForm] = useState(false);
+  const [projectFilter, setProjectFilter] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+
+  const canFilter = ['ADMIN', 'MANAGER', 'DIRECTOR', 'HR'].includes(user?.role ?? '');
+
+  const { data: projects = [] } = useQuery<ProjectOption[]>({
+    queryKey: ['projects'],
+    queryFn: () => api.getProjects() as Promise<ProjectOption[]>,
+    enabled: canFilter,
+  });
+
+  const { data: users = [] } = useQuery<User[]>({
+    queryKey: ['users'],
+    queryFn: () => api.getUsers(),
+    enabled: canFilter,
+  });
+
+  const taskParams: Record<string, string> = { parentId: 'null' };
+  if (search) taskParams.search = search;
+  if (projectFilter) taskParams.projectId = projectFilter;
+  if (assigneeFilter) taskParams.assigneeId = assigneeFilter;
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
-    queryKey: ['tasks', search],
-    queryFn: () =>
-      api.getTasks({ parentId: 'null', ...(search ? { search } : {}) }) as Promise<Task[]>,
+    queryKey: ['tasks', search, projectFilter, assigneeFilter],
+    queryFn: () => api.getTasks(taskParams) as Promise<Task[]>,
   });
 
   const createMutation = useMutation({
@@ -50,20 +79,78 @@ export function TasksPage() {
     },
   });
 
+  const hasFilters = !!(projectFilter || assigneeFilter);
+  const selectedProject = projects.find((p) => p.id === projectFilter);
+  const selectedUser = users.find((u) => u.id === assigneeFilter);
+
+  const subtitle = search
+    ? `Результаты поиска: «${search}»`
+    : hasFilters
+      ? [
+          selectedProject?.name,
+          selectedUser ? `${selectedUser.firstName} ${selectedUser.lastName}` : null,
+        ].filter(Boolean).join(' · ') || 'Отфильтрованный список'
+      : 'Все задачи';
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold">Задачи</h1>
-          <p className="text-muted-foreground">
-            {search ? `Результаты поиска: «${search}»` : 'Все задачи'}
-          </p>
+          <p className="text-muted-foreground">{subtitle}</p>
         </div>
         <Button onClick={() => setShowForm(true)}>
           <Plus className="h-4 w-4" />
           Новая задача
         </Button>
       </div>
+
+      {canFilter && (
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            className="h-10 rounded-lg border border-input bg-background px-3 text-sm min-w-[180px]"
+          >
+            <option value="">Все проекты</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.isPersonal && p.creator
+                  ? ` (${p.creator.firstName} ${p.creator.lastName})`
+                  : p.isPersonal
+                    ? ' (личный)'
+                    : ''}
+              </option>
+            ))}
+          </select>
+          <select
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value)}
+            className="h-10 rounded-lg border border-input bg-background px-3 text-sm min-w-[180px]"
+          >
+            <option value="">Все сотрудники</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.firstName} {u.lastName}
+              </option>
+            ))}
+          </select>
+          {hasFilters && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setProjectFilter('');
+                setAssigneeFilter('');
+              }}
+            >
+              <X className="h-4 w-4" />
+              Сбросить
+            </Button>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="text-muted-foreground">Загрузка...</div>
