@@ -40,11 +40,6 @@ export function TaskFormDialog({
 }: TaskFormDialogProps) {
   const { user } = useAuth();
   const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR'].includes(user?.role ?? '');
-  const personalProject = projects.find((p) => p.isPersonal || p.name === 'Ежедневные задачи');
-  const isPersonalSelected = !!personalProject && form.projectId === personalProject.id;
-  const allowedStatuses = isManager || isPersonalSelected
-    ? STATUSES
-    : STATUSES.filter((s) => s !== 'DONE');
 
   const [form, setForm] = useState<TaskFormData>({
     title: '',
@@ -63,6 +58,12 @@ export function TaskFormDialog({
     queryFn: () => api.getProjects() as Promise<Array<{ id: string; name: string; isPersonal?: boolean }>>,
     enabled: open,
   });
+
+  const personalProject = projects.find((p) => p.isPersonal || p.name === 'Ежедневные задачи');
+  const isPersonalSelected = !!personalProject && form.projectId === personalProject.id;
+  const allowedStatuses = isManager || isPersonalSelected
+    ? STATUSES
+    : STATUSES.filter((s) => s !== 'DONE');
 
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ['users'],
