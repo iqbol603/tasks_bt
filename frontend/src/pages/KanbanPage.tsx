@@ -25,6 +25,7 @@ interface Project {
   id: string;
   name: string;
   isPersonal?: boolean;
+  creator?: { firstName: string; lastName: string };
 }
 
 interface User {
@@ -121,7 +122,14 @@ export function KanbanPage() {
             className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
           >
             {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.isPersonal && p.creator
+                  ? ` (${p.creator.firstName} ${p.creator.lastName})`
+                  : p.isPersonal
+                    ? ' (личный)'
+                    : ''}
+              </option>
             ))}
           </select>
           <Button onClick={() => setShowForm(true)}>

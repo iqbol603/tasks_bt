@@ -129,7 +129,8 @@ export function TaskFormDialog({
             <option value="">Выберите проект</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}{p.isPersonal ? ' (личный)' : ''}
+                {p.name}
+                {p.isPersonal ? ' (личный)' : ''}
               </option>
             ))}
           </select>

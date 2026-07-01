@@ -44,7 +44,7 @@ export const taskInclude = {
   creator: {
     select: { id: true, firstName: true, lastName: true, email: true, role: true },
   },
-  project: { select: { id: true, name: true, color: true } },
+  project: { select: { id: true, name: true, color: true, isPersonal: true } },
   tags: { include: { tag: true } },
   checklists: { orderBy: { position: 'asc' as const } },
   _count: { select: { comments: true, subtasks: true } },
@@ -53,7 +53,7 @@ export const taskInclude = {
 export async function getAccessibleProjectIds(user: AuthRequest['user']): Promise<string[] | null> {
   if (!user) return [];
 
-  if (['ADMIN', 'DIRECTOR', 'HR'].includes(user.role)) {
+  if (['ADMIN', 'DIRECTOR', 'HR', 'MANAGER'].includes(user.role)) {
     return null;
   }
 

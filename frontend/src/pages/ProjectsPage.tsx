@@ -15,6 +15,7 @@ interface Project {
   color: string;
   status: string;
   isPersonal?: boolean;
+  creator?: { firstName: string; lastName: string };
   _count: { tasks: number; members: number };
 }
 
@@ -197,7 +198,14 @@ export function ProjectsPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="h-4 w-4 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
-                    <CardTitle className="text-base truncate">{project.name}</CardTitle>
+                    <CardTitle className="text-base truncate">
+                      {project.name}
+                      {project.isPersonal && project.creator && (
+                        <span className="text-xs font-normal text-muted-foreground block">
+                          {project.creator.firstName} {project.creator.lastName}
+                        </span>
+                      )}
+                    </CardTitle>
                   </div>
                   {canManage && !project.isPersonal && (
                     <div className="flex items-center gap-1 shrink-0">
@@ -241,7 +249,7 @@ export function ProjectsPage() {
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {PROJECT_STATUS_LABELS[project.status] ?? project.status}
-                  {project.isPersonal && ' · Личный проект'}
+                  {project.isPersonal && ' · Личный проект сотрудника'}
                 </span>
               </CardHeader>
               <CardContent>

@@ -8,7 +8,6 @@ import { paramId } from '../lib/params.js';
 import {
   canHavePersonalProject,
   getOrCreatePersonalProject,
-  personalProjectVisibilityFilter,
 } from '../lib/personal-project.js';
 
 const router = Router();
@@ -33,9 +32,7 @@ router.get('/', async (req: AuthRequest, res, next) => {
     const projectIds = await getAccessibleProjectIds(req.user);
     const status = req.query.status as string | undefined;
 
-    const where: Record<string, unknown> = {
-      ...personalProjectVisibilityFilter(user.userId, user.role),
-    };
+    const where: Record<string, unknown> = {};
     if (projectIds) where.id = { in: projectIds };
     if (status) where.status = status;
 

@@ -37,15 +37,6 @@ export async function getOrCreatePersonalProject(userId: string, role: Role) {
   });
 }
 
-export function personalProjectVisibilityFilter(userId: string, role: string) {
-  if (['ADMIN', 'DIRECTOR', 'HR'].includes(role)) {
-    return {
-      OR: [{ isPersonal: false }, { isPersonal: true, creatorId: userId }],
-    };
-  }
-  return {};
-}
-
 export async function isOwnPersonalProjectTask(
   projectId: string,
   userId: string,
