@@ -36,9 +36,17 @@ export function TasksPage() {
   const [showForm, setShowForm] = useState(false);
   const [projectFilter, setProjectFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
-  const [dueDateFilter, setDueDateFilter] = useState('');
+  const [dueFromFilter, setDueFromFilter] = useState('');
+  const [dueToFilter, setDueToFilter] = useState('');
 
   const canFilter = ['ADMIN', 'MANAGER', 'DIRECTOR', 'HR'].includes(user?.role ?? '');
+
+  const formatFilterDate = (value: string) =>
+    new Date(`${value}T12:00:00`).toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
 
   const { data: projects = [] } = useQuery<ProjectOption[]>({
     queryKey: ['projects'],
@@ -56,10 +64,11 @@ export function TasksPage() {
   if (search) taskParams.search = search;
   if (projectFilter) taskParams.projectId = projectFilter;
   if (assigneeFilter) taskParams.assigneeId = assigneeFilter;
-  if (dueDateFilter) taskParams.dueDate = dueDateFilter;
+  if (dueFromFilter) taskParams.dueFrom = dueFromFilter;
+  if (dueToFilter) taskParams.dueTo = dueToFilter;
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
-    queryKey: ['tasks', search, projectFilter, assigneeFilter, dueDateFilter],
+    queryKey: ['tasks', search, projectFilter, assigneeFilter, dueFromFilter, dueToFilter],
     queryFn: () => api.getTasks(taskParams) as Promise<Task[]>,
   });
 
@@ -81,16 +90,19 @@ export function TasksPage() {
     },
   });
 
-  const hasFilters = !!(projectFilter || assigneeFilter || dueDateFilter);
+  const hasFilters = !!(projectFilter || assigneeFilter || dueFromFilter || dueToFilter);
   const selectedProject = projects.find((p) => p.id === projectFilter);
   const selectedUser = users.find((u) => u.id === assigneeFilter);
-  const dueDateLabel = dueDateFilter
-    ? new Date(`${dueDateFilter}T12:00:00`).toLocaleDateString('ru-RU', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : null;
+
+  const duePeriodLabel = (() => {
+    if (dueFromFilter && dueToFilter) {
+      if (dueFromFilter === dueToFilter) return `срок ${formatFilterDate(dueFromFilter)}`;
+      return `срок ${formatFilterDate(dueFromFilter)} — ${formatFilterDate(dueToFilter)}`;
+    }
+    if (dueFromFilter) return `срок с ${formatFilterDate(dueFromFilter)}`;
+    if (dueToFilter) return `срок до ${formatFilterDate(dueToFilter)}`;
+    return null;
+  })();
 
   const subtitle = search
     ? `Результаты поиска: «${search}»`
@@ -98,7 +110,7 @@ export function TasksPage() {
       ? [
           selectedProject?.name,
           selectedUser ? `${selectedUser.firstName} ${selectedUser.lastName}` : null,
-          dueDateLabel ? `срок ${dueDateLabel}` : null,
+          duePeriodLabel,
         ].filter(Boolean).join(' · ') || 'Отфильтрованный список'
       : 'Все задачи';
 
@@ -146,13 +158,24 @@ export function TasksPage() {
               </option>
             ))}
           </select>
-          <input
-            type="date"
-            value={dueDateFilter}
-            onChange={(e) => setDueDateFilter(e.target.value)}
-            className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-            title="Срок (дата)"
-          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Срок:</span>
+            <input
+              type="date"
+              value={dueFromFilter}
+              onChange={(e) => setDueFromFilter(e.target.value)}
+              className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+              title="Срок с"
+            />
+            <span className="text-sm text-muted-foreground">—</span>
+            <input
+              type="date"
+              value={dueToFilter}
+              onChange={(e) => setDueToFilter(e.target.value)}
+              className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+              title="Срок по"
+            />
+          </div>
           {hasFilters && (
             <Button
               variant="outline"
@@ -160,7 +183,8 @@ export function TasksPage() {
               onClick={() => {
                 setProjectFilter('');
                 setAssigneeFilter('');
-                setDueDateFilter('');
+                setDueFromFilter('');
+                setDueToFilter('');
               }}
             >
               <X className="h-4 w-4" />
