@@ -48,8 +48,13 @@ router.post('/', async (req: AuthRequest, res, next) => {
 
     const projectIds = await getAccessibleProjectIds(req.user);
     if (projectIds && !projectIds.includes(task.projectId)) {
-      res.status(403).json({ error: 'Нет доступа' });
-      return;
+      const watcher = await prisma.taskWatcher.findUnique({
+        where: { taskId_userId: { taskId, userId: req.user!.userId } },
+      });
+      if (!watcher) {
+        res.status(403).json({ error: 'Нет доступа' });
+        return;
+      }
     }
 
     const comment = await prisma.taskComment.create({

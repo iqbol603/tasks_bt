@@ -53,6 +53,7 @@ async function runDeadlineChecks() {
     select: {
       id: true,
       title: true,
+      status: true,
       dueDate: true,
       projectId: true,
       assigneeId: true,

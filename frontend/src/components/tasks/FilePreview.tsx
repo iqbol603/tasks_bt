@@ -38,3 +38,21 @@ export function openAuthenticatedPreview(fileId: string) {
       window.open(url, '_blank');
     });
 }
+
+export function downloadAuthenticatedFile(fileId: string) {
+  const token = api.getAccessToken();
+  fetch(`/api/files/${fileId}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+    .then((r) => r.blob())
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+}

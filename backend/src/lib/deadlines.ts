@@ -23,6 +23,7 @@ export async function notifyIfOverdue(task: {
   id: string;
   title: string;
   projectId: string;
+  status?: string;
   dueDate: Date | null;
   assigneeId: string | null;
   assignee?: { firstName: string; lastName: string } | null;
@@ -45,14 +46,18 @@ export async function notifyIfOverdue(task: {
   if (task.assigneeId) recipients.add(task.assigneeId);
   for (const w of watchers) recipients.add(w.userId);
 
-  for (const userId of recipients) {
-    await notifyUserOnceToday(
-      userId,
-      'Задача просрочена',
-      `Задача «${task.title}» просрочена (срок был ${dueStr})`,
-      'overdue',
-      link,
-    );
+  // Если задача на проверке — не спамим исполнителю/наблюдателям просрочку,
+  // но руководителям всё ещё показываем, что задача "зависла" в REVIEW.
+  if (task.status !== 'REVIEW') {
+    for (const userId of recipients) {
+      await notifyUserOnceToday(
+        userId,
+        'Задача просрочена',
+        `Задача «${task.title}» просрочена (срок был ${dueStr})`,
+        'overdue',
+        link,
+      );
+    }
   }
 
   const managers = await getManagerIdsForProject(task.projectId);

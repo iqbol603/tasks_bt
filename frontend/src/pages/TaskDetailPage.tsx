@@ -10,7 +10,7 @@ import { StatusBadge, PriorityBadge } from '@/components/ui/Badge';
 import { TaskFormDialog, type TaskFormData } from '@/components/tasks/TaskFormDialog';
 import { TimeTracker } from '@/components/tasks/TimeTracker';
 import { CommentInput, renderCommentContent } from '@/components/tasks/CommentInput';
-import { AuthenticatedImage, openAuthenticatedPreview } from '@/components/tasks/FilePreview';
+import { AuthenticatedImage, downloadAuthenticatedFile, openAuthenticatedPreview } from '@/components/tasks/FilePreview';
 import { formatDueDate, combineDateTime, splitDateTime, formatDateTime, STATUS_LABELS } from '@/lib/utils';
 
 export function TaskDetailPage() {
@@ -450,21 +450,30 @@ export function TaskDetailPage() {
                       <span>{f.originalName}</span>
                       <span className="text-muted-foreground text-xs">v{f.version} · {(f.size / 1024).toFixed(1)} KB</span>
                     </div>
+                    <div className="flex gap-3 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => downloadAuthenticatedFile(f.id)}
+                        className="text-primary hover:underline"
+                      >
+                        Скачать
+                      </button>
+                      {previewable && f.mimeType === 'application/pdf' && (
+                        <button
+                          type="button"
+                          onClick={() => openAuthenticatedPreview(f.id)}
+                          className="text-primary hover:underline"
+                        >
+                          Открыть PDF
+                        </button>
+                      )}
+                    </div>
                     {previewable && f.mimeType.startsWith('image/') && (
                       <AuthenticatedImage
                         fileId={f.id}
                         alt={f.originalName}
                         className="max-h-48 rounded-lg object-contain"
                       />
-                    )}
-                    {previewable && f.mimeType === 'application/pdf' && (
-                      <button
-                        type="button"
-                        onClick={() => openAuthenticatedPreview(f.id)}
-                        className="text-xs text-primary hover:underline"
-                      >
-                        Открыть PDF
-                      </button>
                     )}
                   </div>
                 );

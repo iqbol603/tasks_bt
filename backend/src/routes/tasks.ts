@@ -83,39 +83,56 @@ router.get('/', async (req: AuthRequest, res, next) => {
     const projectIds = await getAccessibleProjectIds(req.user);
     const { status, projectId, assigneeId, search, parentId, dueDate, dueFrom, dueTo } = req.query;
 
-    const where: Record<string, unknown> = {
+    const base: Record<string, unknown> = {
       parentId: parentId === 'null' ? null : parentId ?? undefined,
     };
 
-    if (projectIds) {
-      where.projectId = projectId ? String(projectId) : { in: projectIds };
-      if (projectId && !projectIds.includes(String(projectId))) {
-        res.status(403).json({ error: 'Нет доступа к проекту' });
-        return;
-      }
-    } else if (projectId) {
-      where.projectId = String(projectId);
-    }
-
-    if (status) where.status = String(status);
-    if (assigneeId) where.assigneeId = String(assigneeId);
+    if (status) base.status = String(status);
+    if (assigneeId) base.assigneeId = String(assigneeId);
 
     if (dueDate) {
       const day = parseLocalDateInput(String(dueDate));
-      where.dueDate = { gte: startOfLocalDay(day), lte: endOfLocalDay(day) };
+      base.dueDate = { gte: startOfLocalDay(day), lte: endOfLocalDay(day) };
     } else if (dueFrom || dueTo) {
       const range: { gte?: Date; lte?: Date } = {};
       if (dueFrom) range.gte = startOfLocalDay(parseLocalDateInput(String(dueFrom)));
       if (dueTo) range.lte = endOfLocalDay(parseLocalDateInput(String(dueTo)));
-      where.dueDate = range;
+      base.dueDate = range;
     }
 
-    if (search) {
-      where.OR = [
-        { title: { contains: String(search) } },
-        { description: { contains: String(search) } },
-      ];
+    const searchWhere = search
+      ? {
+          OR: [
+            { title: { contains: String(search) } },
+            { description: { contains: String(search) } },
+          ],
+        }
+      : {};
+
+    // Доступ:
+    // - если есть доступ к проекту → видим задачи проекта
+    // - если нет доступа к проекту, но сотрудник является наблюдателем → всё равно видим эту задачу
+    const accessWhere: Record<string, unknown> = {};
+    if (projectIds) {
+      if (projectId) {
+        if (!projectIds.includes(String(projectId))) {
+          res.status(403).json({ error: 'Нет доступа к проекту' });
+          return;
+        }
+        accessWhere.projectId = String(projectId);
+      } else {
+        accessWhere.OR = [
+          { projectId: { in: projectIds } },
+          { watchers: { some: { userId: req.user!.userId } } },
+        ];
+      }
+    } else if (projectId) {
+      accessWhere.projectId = String(projectId);
     }
+
+    const where: Record<string, unknown> = {
+      AND: [base, accessWhere, searchWhere].filter((x) => Object.keys(x).length),
+    };
 
     const tasks = await prisma.task.findMany({
       where,
@@ -230,8 +247,13 @@ router.get('/:id', async (req: AuthRequest, res, next) => {
 
     const projectIds = await getAccessibleProjectIds(req.user);
     if (projectIds && !projectIds.includes(task.projectId)) {
-      res.status(403).json({ error: 'Нет доступа к задаче' });
-      return;
+      const watcher = await prisma.taskWatcher.findUnique({
+        where: { taskId_userId: { taskId: id, userId: req.user!.userId } },
+      });
+      if (!watcher) {
+        res.status(403).json({ error: 'Нет доступа к задаче' });
+        return;
+      }
     }
 
     logActivity(req.user!.userId, 'task_view', 'task', id).catch(() => {});
@@ -349,8 +371,13 @@ router.put('/:id', async (req: AuthRequest, res, next) => {
 
     const projectIds = await getAccessibleProjectIds(req.user);
     if (projectIds && !projectIds.includes(existing.projectId)) {
-      res.status(403).json({ error: 'Нет доступа к задаче' });
-      return;
+      const watcher = await prisma.taskWatcher.findUnique({
+        where: { taskId_userId: { taskId: id, userId: req.user!.userId } },
+      });
+      if (!watcher) {
+        res.status(403).json({ error: 'Нет доступа к задаче' });
+        return;
+      }
     }
 
     const data = updateSchema.parse(req.body);
@@ -529,6 +556,7 @@ router.put('/:id', async (req: AuthRequest, res, next) => {
         id: task.id,
         title: task.title,
         projectId: task.projectId,
+        status: task.status,
         dueDate: task.dueDate,
         assigneeId: task.assigneeId,
         assignee: task.assignee,
@@ -555,8 +583,13 @@ router.delete('/:id', async (req: AuthRequest, res, next) => {
 
     const projectIds = await getAccessibleProjectIds(req.user);
     if (projectIds && !projectIds.includes(existing.projectId)) {
-      res.status(403).json({ error: 'Нет доступа к задаче' });
-      return;
+      const watcher = await prisma.taskWatcher.findUnique({
+        where: { taskId_userId: { taskId: id, userId: req.user!.userId } },
+      });
+      if (!watcher) {
+        res.status(403).json({ error: 'Нет доступа к задаче' });
+        return;
+      }
     }
 
     const isManager = isManagerRole(req.user!.role);
