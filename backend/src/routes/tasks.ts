@@ -12,7 +12,7 @@ import {
 import { logActivity, isManagerRole } from '../lib/activity.js';
 import { notifyIfOverdue } from '../lib/deadlines.js';
 import { paramId } from '../lib/params.js';
-import { APP_TIMEZONE, formatLocalDateTime } from '../lib/timezone.js';
+import { formatLocalDateTime } from '../lib/timezone.js';
 
 const router = Router();
 
