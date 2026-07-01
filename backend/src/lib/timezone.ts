@@ -77,3 +77,9 @@ export function formatLocalDateTime(d: Date): string {
     minute: '2-digit',
   });
 }
+
+/** YYYY-MM-DD из input[type=date] */
+export function parseLocalDateInput(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+}

@@ -12,7 +12,7 @@ import {
 import { logActivity, isManagerRole } from '../lib/activity.js';
 import { notifyIfOverdue } from '../lib/deadlines.js';
 import { paramId } from '../lib/params.js';
-import { formatLocalDateTime } from '../lib/timezone.js';
+import { formatLocalDateTime, endOfLocalDay, parseLocalDateInput, startOfLocalDay } from '../lib/timezone.js';
 import { isOwnPersonalProjectTask } from '../lib/personal-project.js';
 
 const router = Router();
@@ -81,7 +81,7 @@ function formatChangeValue(field: string, val: unknown, task?: { assignee?: { fi
 router.get('/', async (req: AuthRequest, res, next) => {
   try {
     const projectIds = await getAccessibleProjectIds(req.user);
-    const { status, projectId, assigneeId, search, parentId } = req.query;
+    const { status, projectId, assigneeId, search, parentId, dueDate, dueFrom, dueTo } = req.query;
 
     const where: Record<string, unknown> = {
       parentId: parentId === 'null' ? null : parentId ?? undefined,
@@ -99,6 +99,17 @@ router.get('/', async (req: AuthRequest, res, next) => {
 
     if (status) where.status = String(status);
     if (assigneeId) where.assigneeId = String(assigneeId);
+
+    if (dueDate) {
+      const day = parseLocalDateInput(String(dueDate));
+      where.dueDate = { gte: startOfLocalDay(day), lte: endOfLocalDay(day) };
+    } else if (dueFrom || dueTo) {
+      const range: { gte?: Date; lte?: Date } = {};
+      if (dueFrom) range.gte = startOfLocalDay(parseLocalDateInput(String(dueFrom)));
+      if (dueTo) range.lte = endOfLocalDay(parseLocalDateInput(String(dueTo)));
+      where.dueDate = range;
+    }
+
     if (search) {
       where.OR = [
         { title: { contains: String(search) } },
