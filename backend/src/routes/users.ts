@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { authenticate, canManageUsers, type AuthRequest } from '../middleware/auth.js';
+import { authenticate, canManageUsers, canManageTeam, type AuthRequest } from '../middleware/auth.js';
 import { pickUser } from '../lib/helpers.js';
 import { paramId } from '../lib/params.js';
 import {
@@ -31,12 +31,17 @@ const createSchema = z.object({
 
 router.post('/', async (req: AuthRequest, res, next) => {
   try {
-    if (!canManageUsers(req.user!.role)) {
-      res.status(403).json({ error: 'Только администратор или HR может создавать сотрудников' });
+    if (!canManageTeam(req.user!.role)) {
+      res.status(403).json({ error: 'Недостаточно прав для создания сотрудников' });
       return;
     }
 
     const data = createSchema.parse(req.body);
+
+    if (req.user!.role === 'MANAGER' && !['EXECUTOR', 'OBSERVER'].includes(data.role)) {
+      res.status(403).json({ error: 'Руководитель может создавать только исполнителей и наблюдателей' });
+      return;
+    }
 
     const existing = await prisma.user.findUnique({ where: { email: data.email } });
     if (existing) {
@@ -71,9 +76,9 @@ router.post('/', async (req: AuthRequest, res, next) => {
 
 router.get('/', async (req: AuthRequest, res, next) => {
   try {
-    const isAdmin = canManageUsers(req.user!.role);
+    const canSeeTeam = canManageTeam(req.user!.role);
 
-    if (!isAdmin && req.user!.role !== 'MANAGER') {
+    if (!canSeeTeam) {
       const users = await prisma.user.findMany({
         where: { isActive: true },
         select: {
@@ -168,17 +173,32 @@ router.patch('/:id', async (req: AuthRequest, res, next) => {
   try {
     const id = paramId(req);
     const isSelf = req.user!.userId === id;
-    const isAdmin = canManageUsers(req.user!.role);
+    const isFullAdmin = canManageUsers(req.user!.role);
+    const isTeamManager = canManageTeam(req.user!.role);
 
-    if (!isSelf && !isAdmin) {
+    if (!isSelf && !isTeamManager) {
       res.status(403).json({ error: 'Недостаточно прав' });
       return;
     }
 
     const data = updateSchema.parse(req.body);
 
-    if (!isAdmin && (data.role !== undefined || data.isActive !== undefined || data.email || data.password)) {
-      res.status(403).json({ error: 'Недостаточно прав для изменения роли, email или пароля' });
+    if (!isSelf) {
+      await assertCanModifyUser(req.user!.userId, req.user!.role as Role, id);
+    }
+
+    if (!isFullAdmin && (data.role !== undefined || data.email)) {
+      res.status(403).json({ error: 'Недостаточно прав для изменения роли или email' });
+      return;
+    }
+
+    if (req.user!.role === 'MANAGER' && !isSelf && data.password) {
+      res.status(403).json({ error: 'Руководитель не может менять пароль сотрудника' });
+      return;
+    }
+
+    if (!isFullAdmin && !isSelf && (data.password)) {
+      res.status(403).json({ error: 'Недостаточно прав для изменения пароля' });
       return;
     }
 
@@ -237,8 +257,8 @@ function handleUserActionError(err: unknown, res: import('express').Response): b
 
 router.post('/:id/deactivate', async (req: AuthRequest, res, next) => {
   try {
-    if (!canManageUsers(req.user!.role)) {
-      res.status(403).json({ error: 'Только администратор или HR может блокировать сотрудников' });
+    if (!canManageTeam(req.user!.role)) {
+      res.status(403).json({ error: 'Недостаточно прав для блокировки сотрудников' });
       return;
     }
 
@@ -255,8 +275,8 @@ router.post('/:id/deactivate', async (req: AuthRequest, res, next) => {
 
 router.post('/:id/activate', async (req: AuthRequest, res, next) => {
   try {
-    if (!canManageUsers(req.user!.role)) {
-      res.status(403).json({ error: 'Только администратор или HR может разблокировать сотрудников' });
+    if (!canManageTeam(req.user!.role)) {
+      res.status(403).json({ error: 'Недостаточно прав для разблокировки сотрудников' });
       return;
     }
 
@@ -273,8 +293,8 @@ router.post('/:id/activate', async (req: AuthRequest, res, next) => {
 
 router.delete('/:id', async (req: AuthRequest, res, next) => {
   try {
-    if (!canManageUsers(req.user!.role)) {
-      res.status(403).json({ error: 'Только администратор или HR может удалять сотрудников' });
+    if (!canManageTeam(req.user!.role)) {
+      res.status(403).json({ error: 'Недостаточно прав для удаления сотрудников' });
       return;
     }
 

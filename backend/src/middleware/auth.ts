@@ -71,6 +71,10 @@ export function canManageUsers(role: Role): boolean {
   return ['ADMIN', 'HR', 'DIRECTOR'].includes(role);
 }
 
+export function canManageTeam(role: Role): boolean {
+  return ['ADMIN', 'HR', 'DIRECTOR', 'MANAGER'].includes(role);
+}
+
 export function canManageProjects(role: Role): boolean {
   return ['ADMIN', 'MANAGER', 'DIRECTOR'].includes(role);
 }

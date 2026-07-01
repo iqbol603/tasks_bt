@@ -21,6 +21,15 @@ interface TeamMember {
 }
 
 const ROLES = ['EXECUTOR', 'MANAGER', 'OBSERVER', 'HR', 'ADMIN', 'DIRECTOR'];
+const MANAGER_ROLES = ['EXECUTOR', 'OBSERVER'];
+
+function canManageMember(actorRole: string | undefined, target: TeamMember, selfId?: string): boolean {
+  if (!actorRole || target.id === selfId) return false;
+  if (['ADMIN', 'DIRECTOR'].includes(actorRole)) return true;
+  if (actorRole === 'HR') return !['ADMIN', 'DIRECTOR'].includes(target.role);
+  if (actorRole === 'MANAGER') return ['EXECUTOR', 'OBSERVER'].includes(target.role);
+  return false;
+}
 
 const emptyForm = {
   email: '',
@@ -40,7 +49,9 @@ export function TeamPage() {
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [form, setForm] = useState(emptyForm);
 
-  const canManage = user?.role === 'ADMIN' || user?.role === 'HR' || user?.role === 'DIRECTOR';
+  const canManage = user?.role === 'ADMIN' || user?.role === 'HR' || user?.role === 'DIRECTOR' || user?.role === 'MANAGER';
+  const isFullAdmin = user?.role === 'ADMIN' || user?.role === 'HR' || user?.role === 'DIRECTOR';
+  const assignableRoles = user?.role === 'MANAGER' ? MANAGER_ROLES : ROLES;
 
   const { data: members = [], isLoading } = useQuery<TeamMember[]>({
     queryKey: ['team'],
@@ -143,7 +154,7 @@ export function TeamPage() {
   };
 
   if (!canManage) {
-    return <div className="text-muted-foreground">Раздел доступен только администратору и HR</div>;
+    return <div className="text-muted-foreground">Раздел доступен только администратору и руководителю</div>;
   }
 
   const isBusy =
@@ -174,24 +185,27 @@ export function TeamPage() {
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <Input placeholder="Имя *" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
             <Input placeholder="Фамилия *" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
-            <Input type="email" placeholder="Email *" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="sm:col-span-2" />
+            <Input type="email" placeholder="Email *" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="sm:col-span-2" disabled={!!editing && !isFullAdmin} />
+            {(isFullAdmin || !editing) && (
             <Input
               type="password"
               placeholder={editing ? 'Новый пароль (оставьте пустым)' : 'Пароль *'}
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
+            )}
             <Input placeholder="Отдел" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
             <select
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
               className="h-10 rounded-lg border border-input bg-background px-3 text-sm sm:col-span-2"
+              disabled={!!editing && !isFullAdmin}
             >
-              {ROLES.map((r) => (
+              {assignableRoles.map((r) => (
                 <option key={r} value={r}>{ROLE_LABELS[r]}</option>
               ))}
             </select>
-            {editing && (
+            {editing && isFullAdmin && (
               <label className="flex items-center gap-2 text-sm sm:col-span-2">
                 <input
                   type="checkbox"
@@ -226,6 +240,7 @@ export function TeamPage() {
         <div className="space-y-2">
           {members.map((m) => {
             const isSelf = m.id === user?.id;
+            const canEditMember = canManageMember(user?.role, m, user?.id);
 
             return (
               <Card key={m.id} className={!m.isActive ? 'opacity-60 border-destructive/30' : ''}>
@@ -246,11 +261,11 @@ export function TeamPage() {
                       <MessageCircle className="h-3.5 w-3.5" />
                       {m.telegramLinked ? 'TG ✓' : 'TG ✗'}
                     </span>
-                    <Button variant="outline" size="sm" onClick={() => openEdit(m)}>
+                    <Button variant="outline" size="sm" onClick={() => openEdit(m)} disabled={!canEditMember && !isSelf}>
                       <Pencil className="h-3.5 w-3.5" />
                       Изменить
                     </Button>
-                    {!isSelf && m.isActive && (
+                    {canEditMember && m.isActive && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -261,7 +276,7 @@ export function TeamPage() {
                         Заблокировать
                       </Button>
                     )}
-                    {!isSelf && !m.isActive && (
+                    {canEditMember && !m.isActive && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -272,7 +287,7 @@ export function TeamPage() {
                         Разблокировать
                       </Button>
                     )}
-                    {!isSelf && (
+                    {canEditMember && (
                       <Button
                         variant="outline"
                         size="sm"

@@ -25,10 +25,19 @@ async function countActiveAdmins(excludeId?: string): Promise<number> {
 }
 
 export function canManageTargetUser(actorRole: Role, target: Pick<User, 'role'>): boolean {
+  if (actorRole === 'MANAGER') {
+    return ['EXECUTOR', 'OBSERVER'].includes(target.role);
+  }
   if (target.role === 'DIRECTOR' && actorRole !== 'DIRECTOR') {
     return false;
   }
   if (target.role === 'ADMIN' && !['ADMIN', 'DIRECTOR'].includes(actorRole)) {
+    return false;
+  }
+  if (target.role === 'MANAGER' && !['ADMIN', 'DIRECTOR', 'HR'].includes(actorRole)) {
+    return false;
+  }
+  if (target.role === 'HR' && !['ADMIN', 'DIRECTOR', 'HR'].includes(actorRole)) {
     return false;
   }
   return true;

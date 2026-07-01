@@ -35,7 +35,7 @@ const navItems = [
   { to: '/daily-report', icon: ClipboardList, label: 'Дневной отчёт', roles: null },
   { to: '/analytics', icon: UserCheck, label: 'Аналитика', roles: ['ADMIN', 'MANAGER', 'DIRECTOR'] },
   { to: '/reports', icon: BarChart3, label: 'Отчёты', roles: null },
-  { to: '/team', icon: Users, label: 'Сотрудники', roles: ['ADMIN', 'HR', 'DIRECTOR'] },
+  { to: '/team', icon: Users, label: 'Сотрудники', roles: ['ADMIN', 'MANAGER', 'HR', 'DIRECTOR'] },
   { to: '/notifications', icon: Bell, label: 'Уведомления', roles: null },
   { to: '/settings', icon: Settings, label: 'Настройки', roles: null },
 ];
