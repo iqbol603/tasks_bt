@@ -2,6 +2,7 @@ import { prisma } from './prisma.js';
 import { sendToUser } from './websocket.js';
 import { sendEmail, buildNotificationEmail, isEmailConfigured } from './email.js';
 import { sendTelegramMessage, formatTelegramNotification, isTelegramConfigured } from './telegram.js';
+import { startOfLocalDay } from './timezone.js';
 
 export async function notifyUser(
   userId: string,
@@ -42,8 +43,7 @@ export async function notifyUser(
 }
 
 export async function wasNotifiedToday(userId: string, type: string, link?: string): Promise<boolean> {
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
+  const startOfToday = startOfLocalDay(new Date());
 
   const existing = await prisma.notification.findFirst({
     where: {

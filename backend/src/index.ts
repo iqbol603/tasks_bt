@@ -1,4 +1,7 @@
 import 'dotenv/config';
+
+process.env.TZ = process.env.TZ ?? 'Asia/Dushanbe';
+
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
@@ -19,6 +22,7 @@ import { errorHandler } from './middleware/error.js';
 import { initWebSocket } from './lib/websocket.js';
 import { initTelegramBot } from './lib/telegram-bot.js';
 import { initScheduler } from './lib/scheduler.js';
+import { APP_TIMEZONE } from './lib/timezone.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -54,4 +58,5 @@ initScheduler();
 server.listen(PORT, () => {
   console.log(`RPS Task Manager API running on http://localhost:${PORT}`);
   console.log(`WebSocket: ws://localhost:${PORT}/ws`);
+  console.log(`Timezone: ${APP_TIMEZONE}`);
 });

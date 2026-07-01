@@ -1,15 +1,6 @@
 import { prisma } from './prisma.js';
 import { notifyUserOnceToday } from './notify.js';
-
-function formatDueDate(dueDate: Date): string {
-  return dueDate.toLocaleString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
+import { formatLocalDateTime } from './timezone.js';
 
 async function getManagerIdsForProject(projectId: string): Promise<string[]> {
   const [globalManagers, projectManagers] = await Promise.all([
@@ -40,7 +31,7 @@ export async function notifyIfOverdue(task: {
   if (!task.dueDate || task.dueDate.getTime() >= Date.now()) return;
 
   const link = `/tasks/${task.id}`;
-  const dueStr = formatDueDate(task.dueDate);
+  const dueStr = formatLocalDateTime(task.dueDate);
   const assigneeName = task.assignee
     ? `${task.assignee.firstName} ${task.assignee.lastName}`
     : 'Не назначен';

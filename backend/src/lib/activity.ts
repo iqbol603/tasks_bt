@@ -1,4 +1,5 @@
 import { prisma } from './prisma.js';
+import { startOfLocalDay } from './timezone.js';
 
 export async function logActivity(
   userId: string,
@@ -16,13 +17,11 @@ export function isManagerRole(role: string): boolean {
 }
 
 export function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
+  return startOfLocalDay(d);
 }
 
 export function daysAgo(n: number): Date {
   const d = new Date();
-  d.setDate(d.getDate() - n);
-  return startOfDay(d);
+  d.setTime(d.getTime() - n * 24 * 60 * 60 * 1000);
+  return startOfLocalDay(d);
 }

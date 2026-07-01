@@ -11,7 +11,9 @@ export function isTelegramConfigured(): boolean {
 export function getTelegramBot(): TelegramBot | null {
   if (!TOKEN) return null;
   if (!bot) {
-    bot = new TelegramBot(TOKEN, { polling: POLLING });
+    bot = POLLING
+      ? new TelegramBot(TOKEN, { polling: true })
+      : new TelegramBot(TOKEN, { polling: false });
     bot.on('polling_error', (err) => {
       console.error('Telegram polling error:', err.message);
     });

@@ -12,6 +12,7 @@ import {
 import { logActivity, isManagerRole } from '../lib/activity.js';
 import { notifyIfOverdue } from '../lib/deadlines.js';
 import { paramId } from '../lib/params.js';
+import { APP_TIMEZONE, formatLocalDateTime } from '../lib/timezone.js';
 
 const router = Router();
 
@@ -60,26 +61,13 @@ function formatDueForNotification(due: Date | null | undefined): string {
   if (!due) return '';
   const d = new Date(due);
   if (Number.isNaN(d.getTime())) return '';
-  const text = d.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  return `\nСрок: ${text}`;
+  return `\nСрок: ${formatLocalDateTime(d)}`;
 }
 
 function formatChangeValue(field: string, val: unknown, task?: { assignee?: { firstName: string; lastName: string } | null }): string {
   if (val == null || val === '') return '—';
   if (field === 'dueDate') {
-    return new Date(String(val)).toLocaleString('ru-RU', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatLocalDateTime(new Date(String(val)));
   }
   if (field === 'status') return STATUS_LABELS[String(val)] ?? String(val);
   if (field === 'priority') return PRIORITY_LABELS[String(val)] ?? String(val);

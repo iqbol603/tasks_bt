@@ -36,6 +36,7 @@ docker run --name tasks_bt_back_cnt \
   --network host \
   --env-file .env \
   -e PORT=6065 \
+  -e TZ=Asia/Dushanbe \
   -v tasks_bt_uploads:/app/uploads \
   -d tasks_bt_back_img
 

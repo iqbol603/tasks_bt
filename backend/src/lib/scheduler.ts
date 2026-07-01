@@ -4,6 +4,14 @@ import { notifyUserOnceToday } from './notify.js';
 import { sendEmail, buildDigestEmail, isEmailConfigured } from './email.js';
 import { sendTelegramMessage, isTelegramConfigured } from './telegram.js';
 import { notifyIfOverdue } from './deadlines.js';
+import {
+  addLocalDays,
+  endOfLocalDay,
+  formatLocalDateTime,
+  getLocalHour,
+  localDayKey,
+  startOfLocalDay,
+} from './timezone.js';
 
 const ACTIVE_STATUSES: TaskStatus[] = [
   TaskStatus.BACKLOG,
@@ -19,33 +27,6 @@ const DIGEST_ROLES = ['MANAGER', 'ADMIN', 'DIRECTOR'] as const;
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let running = false;
 
-function localDayKey(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function endOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
-
-function formatDueDate(dueDate: Date): string {
-  return dueDate.toLocaleString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 async function getProjectFilterForUser(userId: string, role: string) {
   if (['ADMIN', 'DIRECTOR', 'HR'].includes(role)) return {};
 
@@ -60,9 +41,7 @@ async function getProjectFilterForUser(userId: string, role: string) {
 
 async function runDeadlineChecks() {
   const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowKey = localDayKey(tomorrow);
+  const tomorrowKey = localDayKey(addLocalDays(now, 1));
   const todayKey = localDayKey(now);
 
   const tasks = await prisma.task.findMany({
@@ -89,7 +68,7 @@ async function runDeadlineChecks() {
     const nowMs = now.getTime();
     const dueKey = localDayKey(due);
     const link = `/tasks/${task.id}`;
-    const dueStr = formatDueDate(due);
+    const dueStr = formatLocalDateTime(due);
 
     const recipients = new Set<string>();
     if (task.assigneeId) recipients.add(task.assigneeId);
@@ -140,16 +119,16 @@ async function runDeadlineChecks() {
 
 async function runDailyDigest() {
   const now = new Date();
-  if (now.getHours() !== DIGEST_HOUR) return;
+  if (getLocalHour(now) !== DIGEST_HOUR) return;
 
   const managers = await prisma.user.findMany({
     where: { role: { in: [...DIGEST_ROLES] }, isActive: true },
     select: { id: true, email: true, firstName: true, role: true, telegramChatId: true },
   });
 
-  const weekEnd = endOfDay(new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000));
-  const todayStart = startOfDay(now);
-  const todayEnd = endOfDay(now);
+  const weekEnd = endOfLocalDay(new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000));
+  const todayStart = startOfLocalDay(now);
+  const todayEnd = endOfLocalDay(now);
 
   for (const manager of managers) {
     const projectFilter = await getProjectFilterForUser(manager.id, manager.role);
@@ -219,7 +198,7 @@ async function runDailyDigest() {
       inProgress,
       overdueTasks: overdueList.map((t) => ({
         title: t.title,
-        dueDate: t.dueDate ? formatDueDate(t.dueDate) : '—',
+        dueDate: t.dueDate ? formatLocalDateTime(t.dueDate) : '—',
         assignee: t.assignee ? `${t.assignee.firstName} ${t.assignee.lastName}` : 'Не назначен',
         link: `/tasks/${t.id}`,
       })),
@@ -262,6 +241,8 @@ async function tick() {
   }
 }
 
+import { APP_TIMEZONE } from './timezone.js';
+
 export function initScheduler() {
   if (process.env.SCHEDULER_ENABLED === 'false') {
     console.log('Scheduler disabled (SCHEDULER_ENABLED=false)');
@@ -270,7 +251,7 @@ export function initScheduler() {
 
   tick();
   intervalId = setInterval(tick, CHECK_INTERVAL_MS);
-  console.log(`Scheduler started (every ${CHECK_INTERVAL_MS / 60000} min, digest at ${DIGEST_HOUR}:00)`);
+  console.log(`Scheduler started (every ${CHECK_INTERVAL_MS / 60000} min, digest at ${DIGEST_HOUR}:00 ${APP_TIMEZONE})`);
 }
 
 export function stopScheduler() {
