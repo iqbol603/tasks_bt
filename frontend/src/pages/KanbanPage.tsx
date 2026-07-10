@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { PriorityBadge } from '@/components/ui/Badge';
@@ -25,7 +26,7 @@ interface Project {
   id: string;
   name: string;
   isPersonal?: boolean;
-  creator?: { firstName: string; lastName: string };
+  creator?: { id: string; firstName: string; lastName: string };
 }
 
 interface User {
@@ -40,6 +41,8 @@ function toIsoDate(date: string, time: string) {
 
 export function KanbanPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR', 'HR'].includes(user?.role ?? '');
   const [projectId, setProjectId] = useState('');
   const [draggedTask, setDraggedTask] = useState<{ id: string; status: string } | null>(null);
   const [assigneeFilter, setAssigneeFilter] = useState('');
@@ -54,10 +57,13 @@ export function KanbanPage() {
 
   useEffect(() => {
     if (!projectId && projects.length > 0) {
-      const personal = projects.find((p) => p.isPersonal);
-      setProjectId(personal?.id ?? projects[0].id);
+      const team = projects.find((p) => !p.isPersonal);
+      const ownPersonal = projects.find((p) => p.isPersonal && p.creator?.id === user?.id);
+      setProjectId(
+        isManager ? (team?.id ?? projects[0].id) : (ownPersonal?.id ?? projects[0].id),
+      );
     }
-  }, [projects, projectId]);
+  }, [projects, projectId, isManager, user?.id]);
 
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ['users'],

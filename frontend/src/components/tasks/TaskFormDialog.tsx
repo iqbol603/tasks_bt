@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type User } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,6 +27,29 @@ interface TaskFormDialogProps {
   title?: string;
 }
 
+interface ProjectOption {
+  id: string;
+  name: string;
+  isPersonal?: boolean;
+  creator?: { id: string; firstName: string; lastName: string };
+}
+
+interface ProjectDetails {
+  isPersonal: boolean;
+  creator: { id: string; firstName: string; lastName: string };
+  members: Array<{
+    user: { id: string; firstName: string; lastName: string; role: string; isActive?: boolean };
+  }>;
+}
+
+function formatProjectLabel(p: ProjectOption): string {
+  if (p.isPersonal && p.creator) {
+    return `${p.name} (${p.creator.firstName} ${p.creator.lastName})`;
+  }
+  if (p.isPersonal) return `${p.name} (личный)`;
+  return p.name;
+}
+
 const STATUSES = ['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE'];
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
 
@@ -53,33 +76,61 @@ export function TaskFormDialog({
     ...initial,
   });
 
-  const { data: projects = [] } = useQuery<Array<{ id: string; name: string; isPersonal?: boolean }>>({
+  const { data: projects = [] } = useQuery<ProjectOption[]>({
     queryKey: ['projects'],
-    queryFn: () => api.getProjects() as Promise<Array<{ id: string; name: string; isPersonal?: boolean }>>,
+    queryFn: () => api.getProjects() as Promise<ProjectOption[]>,
     enabled: open,
   });
 
-  const personalProject = projects.find((p) => p.isPersonal || p.name === 'Ежедневные задачи');
-  const isPersonalSelected = !!personalProject && form.projectId === personalProject.id;
-  const allowedStatuses = isManager || isPersonalSelected
-    ? STATUSES
-    : STATUSES.filter((s) => s !== 'DONE');
+  const selectedProject = projects.find((p) => p.id === form.projectId);
 
-  const { data: users = [] } = useQuery<User[]>({
+  const { data: projectDetails } = useQuery<ProjectDetails>({
+    queryKey: ['project', form.projectId],
+    queryFn: () => api.getProject(form.projectId) as Promise<ProjectDetails>,
+    enabled: open && !!form.projectId,
+  });
+
+  const isPersonalSelected = !!projectDetails?.isPersonal;
+
+  const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ['users'],
     queryFn: () => api.getUsers(),
     enabled: open,
   });
+
+  const assigneeOptions = useMemo(() => {
+    if (projectDetails?.isPersonal && projectDetails.creator) {
+      return [projectDetails.creator];
+    }
+    if (projectDetails?.members?.length) {
+      const fromMembers = projectDetails.members
+        .map((m) => m.user)
+        .filter((u) => u.isActive !== false);
+      if (fromMembers.length) return fromMembers;
+    }
+    return users;
+  }, [projectDetails, users]);
+
+  const allowedStatuses = isManager || isPersonalSelected
+    ? STATUSES
+    : STATUSES.filter((s) => s !== 'DONE');
 
   useEffect(() => {
     if (open) {
       const due = initial?.dueDate
         ? splitDateTime(initial.dueDate.includes('T') ? initial.dueDate : `${initial.dueDate}T12:00:00`)
         : { date: initial?.dueDate ?? '', time: initial?.dueTime ?? '18:00' };
-      const personalProject = projects.find((p) => p.isPersonal || p.name === 'Ежедневные задачи');
-      const defaultProjectId = initial?.projectId ?? personalProject?.id ?? projects[0]?.id ?? '';
+      const ownPersonal = projects.find(
+        (p) => p.isPersonal && p.creator?.id === user?.id,
+      );
+      const teamProject = projects.find((p) => !p.isPersonal);
+      const defaultProjectId =
+        initial?.projectId ??
+        (isManager ? teamProject?.id : ownPersonal?.id) ??
+        projects[0]?.id ??
+        '';
       const defaultAssigneeId = initial?.assigneeId ?? (
-        !isManager && personalProject && defaultProjectId === personalProject.id && user?.id
+        !isManager && ownPersonal && defaultProjectId === ownPersonal.id && user?.id
           ? user.id
           : ''
       );
@@ -96,6 +147,11 @@ export function TaskFormDialog({
       });
     }
   }, [open, initial, projects, isManager, user?.id]);
+
+  useEffect(() => {
+    if (!open || !projectDetails?.isPersonal || !projectDetails.creator) return;
+    setForm((f) => ({ ...f, assigneeId: projectDetails.creator.id }));
+  }, [open, form.projectId, projectDetails]);
 
   if (!open) return null;
 
@@ -121,35 +177,58 @@ export function TaskFormDialog({
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             className="w-full min-h-[80px] rounded-lg border border-input bg-background px-3 py-2 text-sm resize-y"
           />
-          <select
-            value={form.projectId}
-            onChange={(e) => setForm({ ...form, projectId: e.target.value })}
-            className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-            required
-          >
-            <option value="">Выберите проект</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.isPersonal ? ' (личный)' : ''}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Проект *</label>
+            <select
+              value={form.projectId}
+              onChange={(e) => setForm({ ...form, projectId: e.target.value, assigneeId: '' })}
+              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+              required
+            >
+              <option value="">Выберите проект</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {formatProjectLabel(p)}
+                </option>
+              ))}
+            </select>
+            {projects.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Проекты загружаются…
+              </p>
+            )}
+            {isPersonalSelected && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                Личный проект — задача только для владельца. Чтобы передать задачу сотруднику, выберите командный проект (например, RPS Platform).
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Исполнитель</label>
+            <select
+              value={form.assigneeId}
+              onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
+              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+              disabled={isPersonalSelected}
+            >
+              <option value="">
+                {usersLoading ? 'Загрузка сотрудников…' : 'Без исполнителя'}
               </option>
-            ))}
-          </select>
-          {projects.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              Проекты загружаются… Личный проект «Ежедневные задачи» создаётся автоматически.
-            </p>
-          )}
-          <select
-            value={form.assigneeId}
-            onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-            className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Без исполнителя</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
-            ))}
-          </select>
+              {assigneeOptions.map((u) => (
+                <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+              ))}
+            </select>
+            {!isPersonalSelected && !usersLoading && assigneeOptions.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Сотрудники не найдены. Добавьте участников в проект (раздел «Проекты»).
+              </p>
+            )}
+            {!isPersonalSelected && assigneeOptions.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Участники проекта «{selectedProject ? formatProjectLabel(selectedProject) : ''}»
+              </p>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <select
               value={form.status}
