@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus, Pencil, Upload, Trash2, Play, Send, CheckCircle, RotateCcw, ShieldCheck } from 'lucide-react';
 import { api, type User } from '@/lib/api';
@@ -15,6 +15,7 @@ import { formatDueDate, combineDateTime, splitDateTime, formatDateTime, STATUS_L
 
 export function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [subtaskTitle, setSubtaskTitle] = useState('');
@@ -59,10 +60,16 @@ export function TaskDetailPage() {
 
   const statusMutation = useMutation({
     mutationFn: (status: string) => api.updateTask(id!, { status }),
-    onSuccess: () => {
-      invalidate();
+    onSuccess: (_data, status) => {
       queryClient.invalidateQueries({ queryKey: ['review-queue'] });
       queryClient.invalidateQueries({ queryKey: ['employee-analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['kanban'] });
+      if (status === 'DONE') {
+        navigate('/tasks');
+        return;
+      }
+      invalidate();
     },
   });
 
