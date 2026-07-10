@@ -9,7 +9,7 @@ export interface Toast {
 
 interface ToastContextType {
   toasts: Toast[];
-  showToast: (toast: Omit<Toast, 'id'>) => void;
+  showToast: (toast: Omit<Toast, 'id'> & { id?: string }) => void;
   dismissToast: (id: string) => void;
 }
 
@@ -22,9 +22,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showToast = useCallback((toast: Omit<Toast, 'id'>) => {
-    const id = crypto.randomUUID();
-    setToasts((prev) => [...prev.slice(-4), { ...toast, id }]);
+  const showToast = useCallback((toast: Omit<Toast, 'id'> & { id?: string }) => {
+    const id = toast.id ?? crypto.randomUUID();
+    setToasts((prev) => {
+      if (prev.some((t) => t.id === id)) return prev;
+      return [...prev.slice(-4), { ...toast, id }];
+    });
     setTimeout(() => dismissToast(id), 6000);
   }, [dismissToast]);
 

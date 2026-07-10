@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { StatusBadge, PriorityBadge } from '@/components/ui/Badge';
 import { TaskFormDialog, type TaskFormData } from '@/components/tasks/TaskFormDialog';
-import { formatDueDate, combineDateTime } from '@/lib/utils';
+import { formatDueDate, combineDateTime, STATUS_LABELS } from '@/lib/utils';
 
 interface Task {
   id: string;
@@ -38,8 +38,15 @@ export function TasksPage() {
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [dueFromFilter, setDueFromFilter] = useState('');
   const [dueToFilter, setDueToFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('active');
 
   const canFilter = ['ADMIN', 'MANAGER', 'DIRECTOR', 'HR'].includes(user?.role ?? '');
+
+  const STATUS_FILTER_OPTIONS = [
+    { value: 'active', label: 'Активные (без закрытых)' },
+    { value: 'all', label: 'Все статусы' },
+    ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
+  ] as const;
 
   const formatFilterDate = (value: string) =>
     new Date(`${value}T12:00:00`).toLocaleDateString('ru-RU', {
@@ -66,9 +73,14 @@ export function TasksPage() {
   if (assigneeFilter) taskParams.assigneeId = assigneeFilter;
   if (dueFromFilter) taskParams.dueFrom = dueFromFilter;
   if (dueToFilter) taskParams.dueTo = dueToFilter;
+  if (statusFilter === 'active') {
+    taskParams.excludeStatus = 'DONE,CANCELLED';
+  } else if (statusFilter !== 'all') {
+    taskParams.status = statusFilter;
+  }
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
-    queryKey: ['tasks', search, projectFilter, assigneeFilter, dueFromFilter, dueToFilter],
+    queryKey: ['tasks', search, projectFilter, assigneeFilter, dueFromFilter, dueToFilter, statusFilter],
     queryFn: () => api.getTasks(taskParams) as Promise<Task[]>,
   });
 
@@ -90,9 +102,16 @@ export function TasksPage() {
     },
   });
 
-  const hasFilters = !!(projectFilter || assigneeFilter || dueFromFilter || dueToFilter);
+  const hasFilters = !!(
+    statusFilter !== 'active' ||
+    projectFilter ||
+    assigneeFilter ||
+    dueFromFilter ||
+    dueToFilter
+  );
   const selectedProject = projects.find((p) => p.id === projectFilter);
   const selectedUser = users.find((u) => u.id === assigneeFilter);
+  const statusLabel = STATUS_FILTER_OPTIONS.find((o) => o.value === statusFilter)?.label;
 
   const duePeriodLabel = (() => {
     if (dueFromFilter && dueToFilter) {
@@ -108,11 +127,12 @@ export function TasksPage() {
     ? `Результаты поиска: «${search}»`
     : hasFilters
       ? [
+          statusFilter !== 'active' ? statusLabel : null,
           selectedProject?.name,
           selectedUser ? `${selectedUser.firstName} ${selectedUser.lastName}` : null,
           duePeriodLabel,
         ].filter(Boolean).join(' · ') || 'Отфильтрованный список'
-      : 'Все задачи';
+      : 'Активные задачи';
 
   return (
     <div className="space-y-6">
@@ -127,72 +147,86 @@ export function TasksPage() {
         </Button>
       </div>
 
-      {canFilter && (
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            className="h-10 rounded-lg border border-input bg-background px-3 text-sm min-w-[180px]"
-          >
-            <option value="">Все проекты</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.isPersonal && p.creator
-                  ? ` (${p.creator.firstName} ${p.creator.lastName})`
-                  : p.isPersonal
-                    ? ' (личный)'
-                    : ''}
-              </option>
-            ))}
-          </select>
-          <select
-            value={assigneeFilter}
-            onChange={(e) => setAssigneeFilter(e.target.value)}
-            className="h-10 rounded-lg border border-input bg-background px-3 text-sm min-w-[180px]"
-          >
-            <option value="">Все сотрудники</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.firstName} {u.lastName}
-              </option>
-            ))}
-          </select>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm text-muted-foreground whitespace-nowrap">Срок:</span>
-            <input
-              type="date"
-              value={dueFromFilter}
-              onChange={(e) => setDueFromFilter(e.target.value)}
-              className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-              title="Срок с"
-            />
-            <span className="text-sm text-muted-foreground">—</span>
-            <input
-              type="date"
-              value={dueToFilter}
-              onChange={(e) => setDueToFilter(e.target.value)}
-              className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-              title="Срок по"
-            />
-          </div>
-          {hasFilters && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setProjectFilter('');
-                setAssigneeFilter('');
-                setDueFromFilter('');
-                setDueToFilter('');
-              }}
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="h-10 rounded-lg border border-input bg-background px-3 text-sm min-w-[200px]"
+        >
+          {STATUS_FILTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {canFilter && (
+          <>
+            <select
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+              className="h-10 rounded-lg border border-input bg-background px-3 text-sm min-w-[180px]"
             >
-              <X className="h-4 w-4" />
-              Сбросить
-            </Button>
-          )}
-        </div>
-      )}
+              <option value="">Все проекты</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.isPersonal && p.creator
+                    ? ` (${p.creator.firstName} ${p.creator.lastName})`
+                    : p.isPersonal
+                      ? ' (личный)'
+                      : ''}
+                </option>
+              ))}
+            </select>
+            <select
+              value={assigneeFilter}
+              onChange={(e) => setAssigneeFilter(e.target.value)}
+              className="h-10 rounded-lg border border-input bg-background px-3 text-sm min-w-[180px]"
+            >
+              <option value="">Все сотрудники</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.firstName} {u.lastName}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Срок:</span>
+              <input
+                type="date"
+                value={dueFromFilter}
+                onChange={(e) => setDueFromFilter(e.target.value)}
+                className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                title="Срок с"
+              />
+              <span className="text-sm text-muted-foreground">—</span>
+              <input
+                type="date"
+                value={dueToFilter}
+                onChange={(e) => setDueToFilter(e.target.value)}
+                className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                title="Срок по"
+              />
+            </div>
+          </>
+        )}
+        {hasFilters && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setStatusFilter('active');
+              setProjectFilter('');
+              setAssigneeFilter('');
+              setDueFromFilter('');
+              setDueToFilter('');
+            }}
+          >
+            <X className="h-4 w-4" />
+            Сбросить
+          </Button>
+        )}
+      </div>
 
       {isLoading ? (
         <div className="text-muted-foreground">Загрузка...</div>

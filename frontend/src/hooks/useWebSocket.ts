@@ -24,6 +24,7 @@ export function useWebSocket() {
           const n = data.notification;
           queryClient.invalidateQueries({ queryKey: ['notifications'] });
           showToast({
+            id: n.id,
             title: n.title,
             message: n.message,
             link: n.link ?? undefined,

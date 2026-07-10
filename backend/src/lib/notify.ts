@@ -68,6 +68,21 @@ export async function notifyUserOnceToday(
   return notifyUser(userId, title, message, type, link);
 }
 
+/** Одно уведомление «Новая задача» на исполнителя и задачу в день — без дублей при create/update/approve. */
+export async function notifyTaskAssigned(
+  assigneeId: string,
+  taskId: string,
+  message: string,
+) {
+  return notifyUserOnceToday(
+    assigneeId,
+    'Новая задача',
+    message,
+    'task_assigned',
+    `/tasks/${taskId}`,
+  );
+}
+
 export async function notifyMentionedUsers(
   mentionIds: string[],
   authorId: string,

@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { TaskPriority, TaskStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
-import { getAccessibleProjectIds, logTaskHistory, taskInclude, createNotification } from '../lib/helpers.js';
+import { getAccessibleProjectIds, logTaskHistory, taskInclude } from '../lib/helpers.js';
 import {
   notifyTaskWatchers,
   notifyManagersForReview,
   notifyAssigneeReviewResult,
+  notifyTaskAssigned,
 } from '../lib/notify.js';
 import { logActivity, isManagerRole } from '../lib/activity.js';
 import { notifyIfOverdue } from '../lib/deadlines.js';
@@ -81,13 +82,23 @@ function formatChangeValue(field: string, val: unknown, task?: { assignee?: { fi
 router.get('/', async (req: AuthRequest, res, next) => {
   try {
     const projectIds = await getAccessibleProjectIds(req.user);
-    const { status, projectId, assigneeId, search, parentId, dueDate, dueFrom, dueTo } = req.query;
+    const { status, excludeStatus, projectId, assigneeId, search, parentId, dueDate, dueFrom, dueTo } = req.query;
 
     const base: Record<string, unknown> = {
       parentId: parentId === 'null' ? null : parentId ?? undefined,
     };
 
-    if (status) base.status = String(status);
+    if (status) {
+      base.status = String(status);
+    } else if (excludeStatus) {
+      const excluded = String(excludeStatus)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (excluded.length) {
+        base.status = { notIn: excluded };
+      }
+    }
     if (assigneeId) base.assigneeId = String(assigneeId);
 
     if (dueDate) {
@@ -326,14 +337,12 @@ router.post('/', async (req: AuthRequest, res, next) => {
     await logTaskHistory(task.id, req.user!.userId, 'created', undefined, undefined, task.title);
 
     if (!needsApproval && data.assigneeId && data.assigneeId !== req.user!.userId) {
-      await createNotification(
+      await notifyTaskAssigned(
         data.assigneeId,
-        'Новая задача',
+        task.id,
         parent
           ? `Создана подзадача «${task.title}» для задачи «${parent.title}»${formatDueForNotification(task.dueDate)}`
           : `Вам назначена задача «${task.title}»${formatDueForNotification(task.dueDate)}`,
-        'task_assigned',
-        `/tasks/${task.id}`,
       );
     }
 
@@ -485,19 +494,20 @@ router.put('/:id', async (req: AuthRequest, res, next) => {
           newVal != null ? String(newVal) : undefined,
         );
 
-        if (field === 'assigneeId' && newVal && newVal !== oldVal) {
-          const parent = task.parentId
-            ? await prisma.task.findUnique({ where: { id: task.parentId }, select: { title: true } })
-            : null;
-          await createNotification(
-            String(newVal),
-            'Новая задача',
-            parent
-              ? `Создана/обновлена подзадача «${task.title}» для задачи «${parent.title}»${formatDueForNotification(task.dueDate)}`
-              : `Вам назначена задача «${task.title}»${formatDueForNotification(task.dueDate)}`,
-            'task_assigned',
-            `/tasks/${task.id}`,
-          );
+        if (field === 'assigneeId') {
+          const actualAssignee = task.assigneeId;
+          if (actualAssignee && actualAssignee !== oldVal) {
+            const parent = task.parentId
+              ? await prisma.task.findUnique({ where: { id: task.parentId }, select: { title: true } })
+              : null;
+            await notifyTaskAssigned(
+              actualAssignee,
+              task.id,
+              parent
+                ? `Создана/обновлена подзадача «${task.title}» для задачи «${parent.title}»${formatDueForNotification(task.dueDate)}`
+                : `Вам назначена задача «${task.title}»${formatDueForNotification(task.dueDate)}`,
+            );
+          }
         }
 
         const label = FIELD_LABELS[field] ?? field;
@@ -655,12 +665,10 @@ router.patch('/:id/approve-assignment', async (req: AuthRequest, res, next) => {
     });
 
     if (approve && existing.requestedAssigneeId) {
-      await createNotification(
+      await notifyTaskAssigned(
         existing.requestedAssigneeId,
-        'Новая задача',
+        task.id,
         `Вам назначена задача «${task.title}»${formatDueForNotification(task.dueDate)}`,
-        'task_assigned',
-        `/tasks/${task.id}`,
       );
     }
 
