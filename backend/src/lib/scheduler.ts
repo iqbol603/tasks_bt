@@ -9,8 +9,15 @@ import {
   endOfLocalDay,
   formatLocalDateTime,
   getLocalHour,
+  isMorningNotificationWindow,
+  isWithinWorkingHours,
+  isWorkingDay,
   localDayKey,
   startOfLocalDay,
+  DIGEST_HOUR,
+  WORK_START_HOUR,
+  WORK_END_HOUR,
+  APP_TIMEZONE,
 } from './timezone.js';
 
 const ACTIVE_STATUSES: TaskStatus[] = [
@@ -21,7 +28,6 @@ const ACTIVE_STATUSES: TaskStatus[] = [
 ];
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
-const DIGEST_HOUR = parseInt(process.env.DIGEST_HOUR ?? '8', 10);
 const DIGEST_ROLES = ['MANAGER', 'ADMIN', 'DIRECTOR'] as const;
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -41,6 +47,11 @@ async function getProjectFilterForUser(userId: string, role: string) {
 
 async function runDeadlineChecks() {
   const now = new Date();
+
+  // Суббота и воскресенье — без напоминаний о сроках
+  if (!isWorkingDay(now)) return;
+
+  const isMorning = isMorningNotificationWindow(now);
   const tomorrowKey = localDayKey(addLocalDays(now, 1));
   const todayKey = localDayKey(now);
 
@@ -76,11 +87,14 @@ async function runDeadlineChecks() {
     for (const w of task.watchers) recipients.add(w.userId);
 
     if (dueMs < nowMs) {
-      await notifyIfOverdue(task);
+      // Просрочка — один раз в день в 9:00 (не в полночь)
+      if (isMorning) {
+        await notifyIfOverdue(task);
+      }
       continue;
     }
 
-    if (dueKey === tomorrowKey) {
+    if (isMorning && dueKey === tomorrowKey) {
       for (const userId of recipients) {
         await notifyUserOnceToday(
           userId,
@@ -90,7 +104,7 @@ async function runDeadlineChecks() {
           link,
         );
       }
-    } else if (dueKey === todayKey) {
+    } else if (isMorning && dueKey === todayKey) {
       for (const userId of recipients) {
         await notifyUserOnceToday(
           userId,
@@ -100,8 +114,10 @@ async function runDeadlineChecks() {
           link,
         );
       }
+    }
 
-      // Напоминание за 1 час до дедлайна
+    // Напоминание за 1 час до дедлайна — только в рабочее время 9:00–17:00
+    if (dueKey === todayKey && isWithinWorkingHours(now)) {
       const msUntilDue = dueMs - nowMs;
       if (msUntilDue > 0 && msUntilDue <= 60 * 60 * 1000) {
         for (const userId of recipients) {
@@ -120,7 +136,7 @@ async function runDeadlineChecks() {
 
 async function runDailyDigest() {
   const now = new Date();
-  if (getLocalHour(now) !== DIGEST_HOUR) return;
+  if (!isWorkingDay(now) || getLocalHour(now) !== DIGEST_HOUR) return;
 
   const managers = await prisma.user.findMany({
     where: { role: { in: [...DIGEST_ROLES] }, isActive: true },
@@ -242,8 +258,6 @@ async function tick() {
   }
 }
 
-import { APP_TIMEZONE } from './timezone.js';
-
 export function initScheduler() {
   if (process.env.SCHEDULER_ENABLED === 'false') {
     console.log('Scheduler disabled (SCHEDULER_ENABLED=false)');
@@ -252,7 +266,9 @@ export function initScheduler() {
 
   tick();
   intervalId = setInterval(tick, CHECK_INTERVAL_MS);
-  console.log(`Scheduler started (every ${CHECK_INTERVAL_MS / 60000} min, digest at ${DIGEST_HOUR}:00 ${APP_TIMEZONE})`);
+  console.log(
+    `Scheduler started (every ${CHECK_INTERVAL_MS / 60000} min, work ${WORK_START_HOUR}:00–${WORK_END_HOUR}:00, digest at ${DIGEST_HOUR}:00 ${APP_TIMEZONE}, Mon–Fri)`,
+  );
 }
 
 export function stopScheduler() {

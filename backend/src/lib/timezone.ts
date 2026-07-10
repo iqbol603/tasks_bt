@@ -1,5 +1,9 @@
 export const APP_TIMEZONE = process.env.TZ ?? 'Asia/Dushanbe';
 
+export const WORK_START_HOUR = parseInt(process.env.WORK_START_HOUR ?? '9', 10);
+export const WORK_END_HOUR = parseInt(process.env.WORK_END_HOUR ?? '17', 10);
+export const DIGEST_HOUR = parseInt(process.env.DIGEST_HOUR ?? '9', 10);
+
 type DateParts = {
   year: number;
   month: number;
@@ -42,6 +46,40 @@ export function localDayKey(d: Date): string {
 
 export function getLocalHour(d: Date): number {
   return getParts(d).hour;
+}
+
+const WEEKDAY_MAP: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+/** 0 = воскресенье, 6 = суббота (локальное время приложения). */
+export function getLocalDayOfWeek(d: Date): number {
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIMEZONE,
+    weekday: 'short',
+  }).format(d);
+  return WEEKDAY_MAP[weekday] ?? 0;
+}
+
+export function isWorkingDay(d: Date): boolean {
+  const dow = getLocalDayOfWeek(d);
+  return dow >= 1 && dow <= 5;
+}
+
+export function isWithinWorkingHours(d: Date): boolean {
+  const hour = getLocalHour(d);
+  return hour >= WORK_START_HOUR && hour < WORK_END_HOUR;
+}
+
+/** Окно для утренних напоминаний (срок сегодня/завтра, просрочка, сводка) — в 9:00 по будням. */
+export function isMorningNotificationWindow(d: Date): boolean {
+  return isWorkingDay(d) && getLocalHour(d) === WORK_START_HOUR;
 }
 
 export function startOfLocalDay(date: Date): Date {
