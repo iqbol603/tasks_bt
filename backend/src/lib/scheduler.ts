@@ -28,13 +28,13 @@ const ACTIVE_STATUSES: TaskStatus[] = [
 ];
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
-const DIGEST_ROLES = ['MANAGER', 'ADMIN', 'DIRECTOR'] as const;
+const DIGEST_ROLES = ['MANAGER', 'ADMIN', 'DIRECTOR', 'ASSISTANT_DIRECTOR'] as const;
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let running = false;
 
 async function getProjectFilterForUser(userId: string, role: string) {
-  if (['ADMIN', 'DIRECTOR', 'HR'].includes(role)) return {};
+  if (['ADMIN', 'DIRECTOR', 'ASSISTANT_DIRECTOR', 'HR'].includes(role)) return {};
 
   const [memberships, created] = await Promise.all([
     prisma.projectMember.findMany({ where: { userId }, select: { projectId: true } }),

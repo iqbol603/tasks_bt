@@ -12,8 +12,13 @@ export async function logActivity(
   });
 }
 
+/** Директор и помощник директора — одинаковые права. */
+export function isDirectorRole(role: string): boolean {
+  return role === 'DIRECTOR' || role === 'ASSISTANT_DIRECTOR';
+}
+
 export function isManagerRole(role: string): boolean {
-  return ['ADMIN', 'MANAGER', 'DIRECTOR'].includes(role);
+  return ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(role);
 }
 
 export function startOfDay(d: Date): Date {

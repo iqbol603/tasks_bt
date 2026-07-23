@@ -73,7 +73,17 @@ export const ROLE_LABELS: Record<string, string> = {
   OBSERVER: 'Наблюдатель',
   HR: 'HR',
   DIRECTOR: 'Директор',
+  ASSISTANT_DIRECTOR: 'Помощник директора',
 };
+
+/** Директор и помощник директора — одинаковые права. */
+export function isDirectorRole(role: string | undefined): boolean {
+  return role === 'DIRECTOR' || role === 'ASSISTANT_DIRECTOR';
+}
+
+export function isManagerLikeRole(role: string | undefined): boolean {
+  return ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(role ?? '');
+}
 
 export const PROJECT_STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Активный',

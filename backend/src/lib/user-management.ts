@@ -24,20 +24,27 @@ async function countActiveAdmins(excludeId?: string): Promise<number> {
   });
 }
 
+const DIRECTOR_LEVEL: Role[] = ['DIRECTOR', 'ASSISTANT_DIRECTOR'];
+
+function isDirectorLevel(role: Role): boolean {
+  return DIRECTOR_LEVEL.includes(role);
+}
+
 export function canManageTargetUser(actorRole: Role, target: Pick<User, 'role'>): boolean {
   if (actorRole === 'MANAGER') {
     return ['EXECUTOR', 'OBSERVER'].includes(target.role);
   }
-  if (target.role === 'DIRECTOR' && actorRole !== 'DIRECTOR') {
+  // Директор / помощник директора — только ими же
+  if (isDirectorLevel(target.role) && !isDirectorLevel(actorRole)) {
     return false;
   }
-  if (target.role === 'ADMIN' && !['ADMIN', 'DIRECTOR'].includes(actorRole)) {
+  if (target.role === 'ADMIN' && !(['ADMIN', ...DIRECTOR_LEVEL] as Role[]).includes(actorRole)) {
     return false;
   }
-  if (target.role === 'MANAGER' && !['ADMIN', 'DIRECTOR', 'HR'].includes(actorRole)) {
+  if (target.role === 'MANAGER' && !(['ADMIN', 'HR', ...DIRECTOR_LEVEL] as Role[]).includes(actorRole)) {
     return false;
   }
-  if (target.role === 'HR' && !['ADMIN', 'DIRECTOR', 'HR'].includes(actorRole)) {
+  if (target.role === 'HR' && !(['ADMIN', 'HR', ...DIRECTOR_LEVEL] as Role[]).includes(actorRole)) {
     return false;
   }
   return true;

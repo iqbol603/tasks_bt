@@ -7,7 +7,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { ROLE_LABELS } from '@/lib/utils';
+import { ROLE_LABELS, isDirectorRole } from '@/lib/utils';
 
 interface TeamMember {
   id: string;
@@ -20,13 +20,13 @@ interface TeamMember {
   telegramLinked?: boolean;
 }
 
-const ROLES = ['EXECUTOR', 'MANAGER', 'OBSERVER', 'HR', 'ADMIN', 'DIRECTOR'];
+const ROLES = ['EXECUTOR', 'MANAGER', 'OBSERVER', 'HR', 'ADMIN', 'DIRECTOR', 'ASSISTANT_DIRECTOR'];
 const MANAGER_ROLES = ['EXECUTOR', 'OBSERVER'];
 
 function canManageMember(actorRole: string | undefined, target: TeamMember, selfId?: string): boolean {
   if (!actorRole || target.id === selfId) return false;
-  if (['ADMIN', 'DIRECTOR'].includes(actorRole)) return true;
-  if (actorRole === 'HR') return !['ADMIN', 'DIRECTOR'].includes(target.role);
+  if (actorRole === 'ADMIN' || isDirectorRole(actorRole)) return true;
+  if (actorRole === 'HR') return !['ADMIN', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(target.role);
   if (actorRole === 'MANAGER') return ['EXECUTOR', 'OBSERVER'].includes(target.role);
   return false;
 }
@@ -49,8 +49,8 @@ export function TeamPage() {
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [form, setForm] = useState(emptyForm);
 
-  const canManage = user?.role === 'ADMIN' || user?.role === 'HR' || user?.role === 'DIRECTOR' || user?.role === 'MANAGER';
-  const isFullAdmin = user?.role === 'ADMIN' || user?.role === 'HR' || user?.role === 'DIRECTOR';
+  const canManage = user?.role === 'ADMIN' || user?.role === 'HR' || isDirectorRole(user?.role) || user?.role === 'MANAGER';
+  const isFullAdmin = user?.role === 'ADMIN' || user?.role === 'HR' || isDirectorRole(user?.role);
   const assignableRoles = user?.role === 'MANAGER' ? MANAGER_ROLES : ROLES;
 
   const { data: members = [], isLoading } = useQuery<TeamMember[]>({

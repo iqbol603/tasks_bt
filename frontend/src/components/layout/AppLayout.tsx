@@ -33,9 +33,9 @@ const navItems = [
   { to: '/kanban', icon: Columns3, label: 'Канбан', roles: null },
   { to: '/calendar', icon: Calendar, label: 'Календарь', roles: null },
   { to: '/daily-report', icon: ClipboardList, label: 'Дневной отчёт', roles: null },
-  { to: '/analytics', icon: UserCheck, label: 'Аналитика', roles: ['ADMIN', 'MANAGER', 'DIRECTOR'] },
+  { to: '/analytics', icon: UserCheck, label: 'Аналитика', roles: ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'] },
   { to: '/reports', icon: BarChart3, label: 'Отчёты', roles: null },
-  { to: '/team', icon: Users, label: 'Сотрудники', roles: ['ADMIN', 'MANAGER', 'HR', 'DIRECTOR'] },
+  { to: '/team', icon: Users, label: 'Сотрудники', roles: ['ADMIN', 'MANAGER', 'HR', 'DIRECTOR', 'ASSISTANT_DIRECTOR'] },
   { to: '/notifications', icon: Bell, label: 'Уведомления', roles: null },
   { to: '/settings', icon: Settings, label: 'Настройки', roles: null },
 ];

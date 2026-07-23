@@ -167,11 +167,11 @@ export async function notifyManagersForReview(
 
   const [globalManagers, projectManagers] = await Promise.all([
     prisma.user.findMany({
-      where: { isActive: true, role: { in: ['ADMIN', 'DIRECTOR'] } },
+      where: { isActive: true, role: { in: ['ADMIN', 'DIRECTOR', 'ASSISTANT_DIRECTOR'] } },
       select: { id: true },
     }),
     prisma.projectMember.findMany({
-      where: { projectId, role: { in: ['MANAGER', 'ADMIN', 'DIRECTOR'] } },
+      where: { projectId, role: { in: ['MANAGER', 'ADMIN', 'DIRECTOR', 'ASSISTANT_DIRECTOR'] } },
       select: { userId: true },
     }),
   ]);

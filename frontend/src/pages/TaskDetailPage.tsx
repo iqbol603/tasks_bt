@@ -192,7 +192,7 @@ export function TaskDetailPage() {
 
   const watcherIds = new Set(t.watchers.map((w) => w.user.id));
 
-  const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR'].includes(user?.role ?? '');
+  const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(user?.role ?? '');
   const isAssignee = t.assigneeId === user?.id;
   const canDeleteThisTask = isManager || t.creator?.id === user?.id;
   const wantsOtherAssigneeApproval =

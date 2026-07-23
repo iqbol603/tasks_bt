@@ -40,6 +40,7 @@ const ROLE_HIERARCHY: Record<Role, number> = {
   HR: 3,
   MANAGER: 4,
   DIRECTOR: 5,
+  ASSISTANT_DIRECTOR: 5,
   ADMIN: 6,
 };
 
@@ -68,13 +69,13 @@ export function authorize(...roles: Role[]) {
 }
 
 export function canManageUsers(role: Role): boolean {
-  return ['ADMIN', 'HR', 'DIRECTOR'].includes(role);
+  return ['ADMIN', 'HR', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(role);
 }
 
 export function canManageTeam(role: Role): boolean {
-  return ['ADMIN', 'HR', 'DIRECTOR', 'MANAGER'].includes(role);
+  return ['ADMIN', 'HR', 'DIRECTOR', 'ASSISTANT_DIRECTOR', 'MANAGER'].includes(role);
 }
 
 export function canManageProjects(role: Role): boolean {
-  return ['ADMIN', 'MANAGER', 'DIRECTOR'].includes(role);
+  return ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(role);
 }

@@ -42,7 +42,7 @@ function toIsoDate(date: string, time: string) {
 export function KanbanPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR', 'HR'].includes(user?.role ?? '');
+  const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR', 'HR'].includes(user?.role ?? '');
   const [projectId, setProjectId] = useState('');
   const [draggedTask, setDraggedTask] = useState<{ id: string; status: string } | null>(null);
   const [assigneeFilter, setAssigneeFilter] = useState('');

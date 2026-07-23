@@ -34,7 +34,7 @@ export function EmployeeAnalyticsPage() {
   const { user } = useAuth();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const canView = ['ADMIN', 'MANAGER', 'DIRECTOR'].includes(user?.role ?? '');
+  const canView = ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(user?.role ?? '');
 
   const { data: employees = [], isLoading } = useQuery<EmployeeStat[]>({
     queryKey: ['employee-analytics'],

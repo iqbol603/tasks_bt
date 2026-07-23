@@ -53,7 +53,7 @@ export const taskInclude = {
 export async function getAccessibleProjectIds(user: AuthRequest['user']): Promise<string[] | null> {
   if (!user) return [];
 
-  if (['ADMIN', 'DIRECTOR', 'HR', 'MANAGER'].includes(user.role)) {
+  if (['ADMIN', 'DIRECTOR', 'ASSISTANT_DIRECTOR', 'HR', 'MANAGER'].includes(user.role)) {
     return null;
   }
 

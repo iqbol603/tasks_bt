@@ -62,7 +62,7 @@ export function TaskFormDialog({
   title = 'Новая задача',
 }: TaskFormDialogProps) {
   const { user } = useAuth();
-  const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR'].includes(user?.role ?? '');
+  const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(user?.role ?? '');
 
   const [form, setForm] = useState<TaskFormData>({
     title: '',

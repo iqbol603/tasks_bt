@@ -43,7 +43,7 @@ export function ProjectsPage() {
   const [form, setForm] = useState(emptyForm);
   const [statusFilter, setStatusFilter] = useState('');
 
-  const canManage = ['ADMIN', 'MANAGER', 'DIRECTOR'].includes(user?.role ?? '');
+  const canManage = ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(user?.role ?? '');
 
   const { data: projects = [], isLoading } = useQuery<Project[]>({
     queryKey: ['projects', statusFilter],

@@ -40,7 +40,7 @@ export function TasksPage() {
   const [dueToFilter, setDueToFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('active');
 
-  const canFilter = ['ADMIN', 'MANAGER', 'DIRECTOR', 'HR'].includes(user?.role ?? '');
+  const canFilter = ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR', 'HR'].includes(user?.role ?? '');
 
   const STATUS_FILTER_OPTIONS = [
     { value: 'active', label: 'Активные (без закрытых)' },

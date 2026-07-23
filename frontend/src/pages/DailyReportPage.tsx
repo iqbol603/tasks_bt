@@ -17,7 +17,7 @@ export function DailyReportPage() {
   const [date, setDate] = useState(todayStr());
   const [content, setContent] = useState('');
 
-  const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR'].includes(user?.role ?? '');
+  const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(user?.role ?? '');
 
   const { data: myReport, isLoading } = useQuery({
     queryKey: ['daily-report', date],
