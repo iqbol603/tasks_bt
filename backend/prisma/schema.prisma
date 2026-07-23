@@ -117,8 +117,8 @@ model ProjectMember {
 
 model Task {
   id          String       @id @default(cuid())
-  title       String
-  description String?
+  title       String       @db.VarChar(500)
+  description String?      @db.LongText
   status      TaskStatus   @default(TODO)
   priority    TaskPriority @default(MEDIUM)
   projectId   String       @map("project_id")
