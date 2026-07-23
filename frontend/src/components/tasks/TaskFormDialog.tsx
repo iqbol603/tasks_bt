@@ -82,8 +82,6 @@ export function TaskFormDialog({
     enabled: open,
   });
 
-  const selectedProject = projects.find((p) => p.id === form.projectId);
-
   const { data: projectDetails } = useQuery<ProjectDetails>({
     queryKey: ['project', form.projectId],
     queryFn: () => api.getProject(form.projectId) as Promise<ProjectDetails>,
@@ -99,16 +97,12 @@ export function TaskFormDialog({
   });
 
   const assigneeOptions = useMemo(() => {
+    // Личный проект — только владелец
     if (projectDetails?.isPersonal && projectDetails.creator) {
       return [projectDetails.creator];
     }
-    if (projectDetails?.members?.length) {
-      const fromMembers = projectDetails.members
-        .map((m) => m.user)
-        .filter((u) => u.isActive !== false);
-      if (fromMembers.length) return fromMembers;
-    }
-    return users;
+    // Командный проект — все активные сотрудники (можно назначить любого)
+    return users.filter((u) => (u as User & { isActive?: boolean }).isActive !== false);
   }, [projectDetails, users]);
 
   const allowedStatuses = isManager || isPersonalSelected
@@ -220,12 +214,12 @@ export function TaskFormDialog({
             </select>
             {!isPersonalSelected && !usersLoading && assigneeOptions.length === 0 && (
               <p className="text-xs text-muted-foreground mt-1">
-                Сотрудники не найдены. Добавьте участников в проект (раздел «Проекты»).
+                Сотрудники не найдены. Создайте их в разделе «Сотрудники».
               </p>
             )}
             {!isPersonalSelected && assigneeOptions.length > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
-                Участники проекта «{selectedProject ? formatProjectLabel(selectedProject) : ''}»
+                Выберите сотрудника, которому передаёте задачу
               </p>
             )}
           </div>
