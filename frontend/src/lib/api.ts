@@ -8,6 +8,13 @@ export interface User {
   avatarUrl?: string | null;
   role: string;
   department?: string | null;
+  departmentId?: string | null;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  _count?: { users: number };
 }
 
 export interface AuthResponse {
@@ -199,12 +206,35 @@ class ApiClient {
     lastName: string;
     role: string;
     department?: string;
+    departmentId?: string | null;
   }) {
     return this.request('/users', { method: 'POST', body: JSON.stringify(data) });
   }
 
   updateUser(id: string, data: Record<string, unknown>) {
     return this.request(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+
+  getDepartments() {
+    return this.request<Department[]>('/departments');
+  }
+
+  createDepartment(name: string) {
+    return this.request<Department>('/departments', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  updateDepartment(id: string, name: string) {
+    return this.request<Department>(`/departments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  deleteDepartment(id: string) {
+    return this.request(`/departments/${id}`, { method: 'DELETE' });
   }
 
   deactivateUser(id: string) {

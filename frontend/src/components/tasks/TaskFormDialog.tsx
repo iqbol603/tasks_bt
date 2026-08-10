@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type User } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
@@ -62,7 +62,9 @@ export function TaskFormDialog({
   title = 'Новая задача',
 }: TaskFormDialogProps) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const isManager = ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'].includes(user?.role ?? '');
+  const canCreateProject = isManager;
 
   const [form, setForm] = useState<TaskFormData>({
     title: '',
@@ -75,8 +77,12 @@ export function TaskFormDialog({
     dueTime: '18:00',
     ...initial,
   });
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [projectError, setProjectError] = useState('');
 
-  const { data: projects = [] } = useQuery<ProjectOption[]>({
+  const { data: projects = [], refetch: refetchProjects } = useQuery<ProjectOption[]>({
     queryKey: ['projects'],
     queryFn: () => api.getProjects() as Promise<ProjectOption[]>,
     enabled: open,
@@ -147,7 +153,37 @@ export function TaskFormDialog({
     setForm((f) => ({ ...f, assigneeId: projectDetails.creator.id }));
   }, [open, form.projectId, projectDetails]);
 
+  useEffect(() => {
+    if (!open) {
+      setShowNewProject(false);
+      setNewProjectName('');
+      setProjectError('');
+    }
+  }, [open]);
+
   if (!open) return null;
+
+  const handleCreateProject = async () => {
+    const name = newProjectName.trim();
+    if (!name) {
+      setProjectError('Укажите название проекта');
+      return;
+    }
+    setCreatingProject(true);
+    setProjectError('');
+    try {
+      const created = await api.createProject({ name }) as ProjectOption;
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      await refetchProjects();
+      setForm((f) => ({ ...f, projectId: created.id, assigneeId: '' }));
+      setShowNewProject(false);
+      setNewProjectName('');
+    } catch (err) {
+      setProjectError(err instanceof Error ? err.message : 'Не удалось создать проект');
+    } finally {
+      setCreatingProject(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,6 +226,38 @@ export function TaskFormDialog({
               <p className="text-xs text-muted-foreground mt-1">
                 Проекты загружаются…
               </p>
+            )}
+            {canCreateProject && (
+              <button
+                type="button"
+                className="text-xs text-primary hover:underline mt-1"
+                onClick={() => { setShowNewProject((v) => !v); setProjectError(''); }}
+              >
+                {showNewProject ? 'Скрыть создание проекта' : '+ Создать новый проект'}
+              </button>
+            )}
+            {showNewProject && canCreateProject && (
+              <div className="mt-2 flex flex-wrap gap-2 items-end">
+                <div className="flex-1 min-w-[160px]">
+                  <Input
+                    placeholder="Название нового проекта *"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleCreateProject}
+                  disabled={creatingProject || !newProjectName.trim()}
+                >
+                  {creatingProject ? 'Создание…' : 'Создать'}
+                </Button>
+              </div>
+            )}
+            {projectError && (
+              <p className="text-xs text-destructive mt-1">{projectError}</p>
             )}
             {isPersonalSelected && (
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">

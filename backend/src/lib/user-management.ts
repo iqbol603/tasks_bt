@@ -98,6 +98,7 @@ export async function deleteUserAccount(userId: string): Promise<void> {
         firstName: 'Удалён',
         lastName: 'Сотрудник',
         department: null,
+        departmentId: null,
         avatarUrl: null,
         telegramChatId: null,
         telegramLinkCode: null,

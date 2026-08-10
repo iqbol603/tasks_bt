@@ -15,6 +15,7 @@ import {
   revokeUserSessions,
 } from '../lib/user-management.js';
 import { getOrCreatePersonalProject, canHavePersonalProject } from '../lib/personal-project.js';
+import { resolveDepartmentFields } from '../lib/departments.js';
 
 const router = Router();
 
@@ -26,7 +27,8 @@ const createSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   role: z.nativeEnum(Role).default(Role.EXECUTOR),
-  department: z.string().optional(),
+  department: z.string().optional().nullable(),
+  departmentId: z.string().optional().nullable(),
 });
 
 router.post('/', async (req: AuthRequest, res, next) => {
@@ -49,6 +51,20 @@ router.post('/', async (req: AuthRequest, res, next) => {
       return;
     }
 
+    let deptFields: { departmentId?: string | null; department?: string | null } = {};
+    try {
+      deptFields = await resolveDepartmentFields({
+        departmentId: data.departmentId,
+        department: data.department,
+      });
+    } catch (e) {
+      if (e instanceof Error && e.message === 'DEPARTMENT_NOT_FOUND') {
+        res.status(400).json({ error: 'Отдел не найден' });
+        return;
+      }
+      throw e;
+    }
+
     const passwordHash = await bcrypt.hash(data.password, 10);
     const user = await prisma.user.create({
       data: {
@@ -57,7 +73,8 @@ router.post('/', async (req: AuthRequest, res, next) => {
         firstName: data.firstName,
         lastName: data.lastName,
         role: data.role,
-        department: data.department,
+        department: deptFields.department ?? null,
+        departmentId: deptFields.departmentId ?? null,
       },
     });
 
@@ -67,6 +84,7 @@ router.post('/', async (req: AuthRequest, res, next) => {
 
     res.status(201).json({
       ...pickUser(user),
+      departmentId: user.departmentId,
       message: 'Сотрудник создан. Попросите его привязать Telegram в Настройках.',
     });
   } catch (err) {
@@ -89,6 +107,7 @@ router.get('/', async (req: AuthRequest, res, next) => {
           avatarUrl: true,
           role: true,
           department: true,
+          departmentId: true,
         },
         orderBy: { lastName: 'asc' },
       });
@@ -109,6 +128,7 @@ router.get('/', async (req: AuthRequest, res, next) => {
         avatarUrl: true,
         role: true,
         department: true,
+        departmentId: true,
         isActive: true,
         telegramChatId: true,
         createdAt: true,
@@ -124,6 +144,7 @@ router.get('/', async (req: AuthRequest, res, next) => {
         avatarUrl: u.avatarUrl,
         role: u.role,
         department: u.department,
+        departmentId: u.departmentId,
         isActive: u.isActive,
         telegramLinked: !!u.telegramChatId,
         createdAt: u.createdAt,
@@ -146,6 +167,7 @@ router.get('/:id', async (req: AuthRequest, res, next) => {
         avatarUrl: true,
         role: true,
         department: true,
+        departmentId: true,
         isActive: true,
       },
     });
@@ -165,6 +187,7 @@ const updateSchema = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   department: z.string().optional().nullable(),
+  departmentId: z.string().optional().nullable(),
   role: z.nativeEnum(Role).optional(),
   isActive: z.boolean().optional(),
 });
@@ -210,11 +233,24 @@ router.patch('/:id', async (req: AuthRequest, res, next) => {
       }
     }
 
-    const { password, ...rest } = data;
+    const { password, department, departmentId, ...rest } = data;
     const updateData: Record<string, unknown> = { ...rest };
 
     if (password) {
       updateData.passwordHash = await bcrypt.hash(password, 10);
+    }
+
+    if (department !== undefined || departmentId !== undefined) {
+      try {
+        const deptFields = await resolveDepartmentFields({ departmentId, department });
+        Object.assign(updateData, deptFields);
+      } catch (e) {
+        if (e instanceof Error && e.message === 'DEPARTMENT_NOT_FOUND') {
+          res.status(400).json({ error: 'Отдел не найден' });
+          return;
+        }
+        throw e;
+      }
     }
 
     if (data.isActive === false) {
@@ -225,7 +261,7 @@ router.patch('/:id', async (req: AuthRequest, res, next) => {
       where: { id },
       data: updateData,
     });
-    res.json(pickUser(user));
+    res.json({ ...pickUser(user), departmentId: user.departmentId });
   } catch (err) {
     next(err);
   }

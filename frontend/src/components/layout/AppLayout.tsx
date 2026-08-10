@@ -17,6 +17,7 @@ import {
   X,
   ClipboardList,
   UserCheck,
+  Building2,
 } from 'lucide-react';
 import { SearchInput } from '@/components/tasks/TaskFormDialog';
 import { NotificationBell } from '@/components/layout/NotificationBell';
@@ -36,6 +37,7 @@ const navItems = [
   { to: '/analytics', icon: UserCheck, label: 'Аналитика', roles: ['ADMIN', 'MANAGER', 'DIRECTOR', 'ASSISTANT_DIRECTOR'] },
   { to: '/reports', icon: BarChart3, label: 'Отчёты', roles: null },
   { to: '/team', icon: Users, label: 'Сотрудники', roles: ['ADMIN', 'MANAGER', 'HR', 'DIRECTOR', 'ASSISTANT_DIRECTOR'] },
+  { to: '/departments', icon: Building2, label: 'Отделы', roles: ['ADMIN', 'MANAGER', 'HR', 'DIRECTOR', 'ASSISTANT_DIRECTOR'] },
   { to: '/notifications', icon: Bell, label: 'Уведомления', roles: null },
   { to: '/settings', icon: Settings, label: 'Настройки', roles: null },
 ];

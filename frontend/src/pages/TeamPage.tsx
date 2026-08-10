@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, MessageCircle, Pencil, Ban, CheckCircle, Trash2 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, type Department } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/ui/Button';
@@ -16,12 +16,14 @@ interface TeamMember {
   lastName: string;
   role: string;
   department: string | null;
+  departmentId?: string | null;
   isActive: boolean;
   telegramLinked?: boolean;
 }
 
 const ROLES = ['EXECUTOR', 'MANAGER', 'OBSERVER', 'HR', 'ADMIN', 'DIRECTOR', 'ASSISTANT_DIRECTOR'];
 const MANAGER_ROLES = ['EXECUTOR', 'OBSERVER'];
+const CREATE_DEPT_VALUE = '__create_department__';
 
 function canManageMember(actorRole: string | undefined, target: TeamMember, selfId?: string): boolean {
   if (!actorRole || target.id === selfId) return false;
@@ -37,7 +39,7 @@ const emptyForm = {
   firstName: '',
   lastName: '',
   role: 'EXECUTOR',
-  department: '',
+  departmentId: '',
   isActive: true,
 };
 
@@ -48,6 +50,8 @@ export function TeamPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [newDeptName, setNewDeptName] = useState('');
+  const [showNewDept, setShowNewDept] = useState(false);
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'HR' || isDirectorRole(user?.role) || user?.role === 'MANAGER';
   const isFullAdmin = user?.role === 'ADMIN' || user?.role === 'HR' || isDirectorRole(user?.role);
@@ -59,13 +63,40 @@ export function TeamPage() {
     enabled: canManage,
   });
 
+  const { data: departments = [] } = useQuery<Department[]>({
+    queryKey: ['departments'],
+    queryFn: () => api.getDepartments(),
+    enabled: canManage,
+  });
+
   const invalidateTeam = () => {
     queryClient.invalidateQueries({ queryKey: ['team'] });
     queryClient.invalidateQueries({ queryKey: ['users'] });
+    queryClient.invalidateQueries({ queryKey: ['departments'] });
   };
 
+  const createDeptMutation = useMutation({
+    mutationFn: () => api.createDepartment(newDeptName.trim()),
+    onSuccess: (dept) => {
+      invalidateTeam();
+      setForm((f) => ({ ...f, departmentId: (dept as Department).id }));
+      setShowNewDept(false);
+      setNewDeptName('');
+      showToast({ title: 'Отдел создан', message: (dept as Department).name });
+    },
+    onError: (err: Error) => showToast({ title: 'Ошибка', message: err.message }),
+  });
+
   const createMutation = useMutation({
-    mutationFn: () => api.createUser(form),
+    mutationFn: () =>
+      api.createUser({
+        email: form.email,
+        password: form.password,
+        firstName: form.firstName,
+        lastName: form.lastName,
+        role: form.role,
+        departmentId: form.departmentId || null,
+      }),
     onSuccess: () => {
       invalidateTeam();
       setShowForm(false);
@@ -82,7 +113,7 @@ export function TeamPage() {
         firstName: form.firstName,
         lastName: form.lastName,
         role: form.role,
-        department: form.department || null,
+        departmentId: form.departmentId || null,
         isActive: form.isActive,
         ...(form.password ? { password: form.password } : {}),
       }),
@@ -126,13 +157,14 @@ export function TeamPage() {
   const openEdit = (m: TeamMember) => {
     setEditing(m);
     setShowForm(false);
+    setShowNewDept(false);
     setForm({
       email: m.email,
       password: '',
       firstName: m.firstName,
       lastName: m.lastName,
       role: m.role,
-      department: m.department ?? '',
+      departmentId: m.departmentId ?? '',
       isActive: m.isActive,
     });
   };
@@ -162,7 +194,8 @@ export function TeamPage() {
     updateMutation.isPending ||
     deactivateMutation.isPending ||
     activateMutation.isPending ||
-    deleteMutation.isPending;
+    deleteMutation.isPending ||
+    createDeptMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -171,7 +204,7 @@ export function TeamPage() {
           <h1 className="text-2xl font-bold">Сотрудники</h1>
           <p className="text-muted-foreground">Создание, блокировка и удаление команды</p>
         </div>
-        <Button onClick={() => { setShowForm(!showForm); setEditing(null); }}>
+        <Button onClick={() => { setShowForm(!showForm); setEditing(null); setShowNewDept(false); }}>
           <Plus className="h-4 w-4" />
           Добавить
         </Button>
@@ -187,14 +220,61 @@ export function TeamPage() {
             <Input placeholder="Фамилия *" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
             <Input type="email" placeholder="Email *" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="sm:col-span-2" disabled={!!editing && !isFullAdmin} />
             {(isFullAdmin || !editing) && (
-            <Input
-              type="password"
-              placeholder={editing ? 'Новый пароль (оставьте пустым)' : 'Пароль *'}
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-            />
+              <Input
+                type="password"
+                placeholder={editing ? 'Новый пароль (оставьте пустым)' : 'Пароль *'}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+              />
             )}
-            <Input placeholder="Отдел" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
+            <div className={(isFullAdmin || !editing) ? '' : 'sm:col-span-2'}>
+              <label className="text-xs text-muted-foreground mb-1 block">Отдел</label>
+              <select
+                value={showNewDept ? CREATE_DEPT_VALUE : form.departmentId}
+                onChange={(e) => {
+                  if (e.target.value === CREATE_DEPT_VALUE) {
+                    setShowNewDept(true);
+                    return;
+                  }
+                  setShowNewDept(false);
+                  setForm({ ...form, departmentId: e.target.value });
+                }}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Без отдела</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+                <option value={CREATE_DEPT_VALUE}>+ Создать новый отдел…</option>
+              </select>
+            </div>
+            {showNewDept && (
+              <div className="sm:col-span-2 flex flex-wrap gap-2 items-end">
+                <div className="flex-1 min-w-[180px]">
+                  <label className="text-xs text-muted-foreground mb-1 block">Название нового отдела</label>
+                  <Input
+                    placeholder="Например: Маркетинг"
+                    value={newDeptName}
+                    onChange={(e) => setNewDeptName(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => createDeptMutation.mutate()}
+                  disabled={!newDeptName.trim() || createDeptMutation.isPending}
+                >
+                  Создать отдел
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => { setShowNewDept(false); setNewDeptName(''); }}
+                >
+                  Отмена
+                </Button>
+              </div>
+            )}
             <select
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
@@ -226,7 +306,7 @@ export function TeamPage() {
               >
                 {editing ? 'Сохранить' : 'Создать'}
               </Button>
-              <Button variant="outline" onClick={() => { setShowForm(false); setEditing(null); }}>
+              <Button variant="outline" onClick={() => { setShowForm(false); setEditing(null); setShowNewDept(false); }}>
                 Отмена
               </Button>
             </div>
@@ -266,23 +346,13 @@ export function TeamPage() {
                       Изменить
                     </Button>
                     {canEditMember && m.isActive && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeactivate(m)}
-                        disabled={isBusy}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => handleDeactivate(m)} disabled={isBusy}>
                         <Ban className="h-3.5 w-3.5" />
                         Заблокировать
                       </Button>
                     )}
                     {canEditMember && !m.isActive && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => activateMutation.mutate(m.id)}
-                        disabled={isBusy}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => activateMutation.mutate(m.id)} disabled={isBusy}>
                         <CheckCircle className="h-3.5 w-3.5" />
                         Разблокировать
                       </Button>

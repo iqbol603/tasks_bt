@@ -14,6 +14,7 @@ import { TaskDetailPage } from '@/pages/TaskDetailPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { TeamPage } from '@/pages/TeamPage';
+import { DepartmentsPage } from '@/pages/DepartmentsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { DailyReportPage } from '@/pages/DailyReportPage';
 import { EmployeeAnalyticsPage } from '@/pages/EmployeeAnalyticsPage';
@@ -61,6 +62,7 @@ function AppRoutes() {
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="team" element={<TeamPage />} />
+        <Route path="departments" element={<DepartmentsPage />} />
         <Route path="daily-report" element={<DailyReportPage />} />
         <Route path="analytics" element={<EmployeeAnalyticsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />

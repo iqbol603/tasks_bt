@@ -48,12 +48,14 @@ model User {
   avatarUrl    String?  @map("avatar_url")
   role         Role     @default(EXECUTOR)
   department   String?
+  departmentId String?  @map("department_id")
   telegramChatId String?  @map("telegram_chat_id")
   telegramLinkCode String? @map("telegram_link_code")
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  dept             Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   createdProjects  Project[]       @relation("ProjectCreator")
   projectMembers   ProjectMember[]
   assignedTasks    Task[]          @relation("TaskAssignee")
@@ -68,6 +70,17 @@ model User {
   dailyReports     DailyReport[]
 
   @@map("users")
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users User[]
+
+  @@map("departments")
 }
 
 model RefreshToken {
