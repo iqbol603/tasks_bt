@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { getAccessibleProjectIds } from '../lib/helpers.js';
+import { getTaskAccessWhere } from '../lib/team-access.js';
 
 const router = Router();
 
@@ -11,9 +12,12 @@ router.get('/', async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.userId;
     const projectIds = await getAccessibleProjectIds(req.user);
-    const projectFilter = projectIds ? { projectId: { in: projectIds } } : {};
+    const taskAccess = await getTaskAccessWhere(req.user!);
 
     const now = new Date();
+    const baseWhere = Object.keys(taskAccess).length
+      ? { AND: [taskAccess, { parentId: null }] }
+      : { parentId: null };
 
     const [
       totalTasks,
@@ -25,36 +29,52 @@ router.get('/', async (req: AuthRequest, res, next) => {
       recentTasks,
       projectStats,
     ] = await Promise.all([
-      prisma.task.count({ where: { ...projectFilter, parentId: null } }),
-      prisma.task.count({
-        where: { ...projectFilter, assigneeId: userId, status: { not: 'DONE' } },
-      }),
+      prisma.task.count({ where: baseWhere }),
       prisma.task.count({
         where: {
-          ...projectFilter,
-          dueDate: { lt: now },
-          status: { notIn: ['DONE', 'CANCELLED'] },
+          AND: [taskAccess, { assigneeId: userId, status: { not: 'DONE' } }].filter(
+            (x) => Object.keys(x).length,
+          ),
         },
       }),
       prisma.task.count({
         where: {
-          ...projectFilter,
-          status: 'DONE',
-          updatedAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
+          AND: [
+            taskAccess,
+            {
+              dueDate: { lt: now },
+              status: { notIn: ['DONE', 'CANCELLED'] },
+            },
+          ].filter((x) => Object.keys(x).length),
+        },
+      }),
+      prisma.task.count({
+        where: {
+          AND: [
+            taskAccess,
+            {
+              status: 'DONE',
+              updatedAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
+            },
+          ].filter((x) => Object.keys(x).length),
         },
       }),
       prisma.task.groupBy({
         by: ['status'],
-        where: { ...projectFilter, parentId: null },
+        where: baseWhere,
         _count: true,
       }),
       prisma.task.groupBy({
         by: ['priority'],
-        where: { ...projectFilter, parentId: null, status: { not: 'DONE' } },
+        where: {
+          AND: [taskAccess, { parentId: null, status: { not: 'DONE' } }].filter(
+            (x) => Object.keys(x).length,
+          ),
+        },
         _count: true,
       }),
       prisma.task.findMany({
-        where: projectFilter,
+        where: taskAccess,
         include: {
           assignee: { select: { id: true, firstName: true, lastName: true } },
           project: { select: { id: true, name: true, color: true } },

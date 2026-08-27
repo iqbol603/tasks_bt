@@ -297,7 +297,9 @@ export function TeamPage() {
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>{deptOptionLabel(d)}</option>
                 ))}
-                <option value={CREATE_DEPT_VALUE}>+ Создать новый отдел…</option>
+                {isFullAdmin && (
+                  <option value={CREATE_DEPT_VALUE}>+ Создать новый отдел…</option>
+                )}
               </select>
               {isManagerRoleSelected && (
                 <p className="text-xs text-muted-foreground mt-1">

@@ -5,7 +5,7 @@ import { authenticate, canManageTeam, type AuthRequest } from '../middleware/aut
 import { paramId } from '../lib/params.js';
 import { backfillDepartmentsFromUsers } from '../lib/departments.js';
 import { assignDepartmentHead } from '../lib/department-head.js';
-import { isGlobalViewer, isDepartmentInManagedScope } from '../lib/team-access.js';
+import { isGlobalViewer, getVisibleDepartmentIds } from '../lib/team-access.js';
 
 const router = Router();
 router.use(authenticate);
@@ -28,10 +28,13 @@ const updateSchema = z.object({
   headUserId: z.string().optional().nullable(),
 });
 
-router.get('/', async (_req: AuthRequest, res, next) => {
+router.get('/', async (req: AuthRequest, res, next) => {
   try {
     await backfillDepartmentsFromUsers();
+    const visibleIds = await getVisibleDepartmentIds(req.user!.userId, req.user!.role);
+
     const departments = await prisma.department.findMany({
+      where: visibleIds ? { id: { in: visibleIds } } : undefined,
       orderBy: { name: 'asc' },
       include: departmentInclude,
     });
@@ -48,6 +51,12 @@ router.post('/', async (req: AuthRequest, res, next) => {
       return;
     }
 
+    // Руководитель подотдела не создаёт произвольные отделы — только директор/HR/админ
+    if (!isGlobalViewer(req.user!.role)) {
+      res.status(403).json({ error: 'Создавать отделы может только директор, HR или администратор' });
+      return;
+    }
+
     const { name, parentId, headUserId } = createSchema.parse(req.body);
     const trimmed = name.trim();
     if (!trimmed) {
@@ -55,9 +64,10 @@ router.post('/', async (req: AuthRequest, res, next) => {
       return;
     }
 
-    if (parentId && !(await isDepartmentInManagedScope(req.user!.userId, req.user!.role, parentId))) {
-      if (!isGlobalViewer(req.user!.role)) {
-        res.status(403).json({ error: 'Нельзя создать подотдел в этом отделе' });
+    if (parentId) {
+      const parent = await prisma.department.findUnique({ where: { id: parentId }, select: { id: true } });
+      if (!parent) {
+        res.status(400).json({ error: 'Родительский отдел не найден' });
         return;
       }
     }
@@ -100,33 +110,17 @@ router.post('/', async (req: AuthRequest, res, next) => {
 
 router.patch('/:id', async (req: AuthRequest, res, next) => {
   try {
-    if (!canManageTeam(req.user!.role)) {
-      res.status(403).json({ error: 'Недостаточно прав' });
+    if (!isGlobalViewer(req.user!.role)) {
+      res.status(403).json({ error: 'Изменять отделы может только директор, HR или администратор' });
       return;
     }
 
     const id = paramId(req);
     const data = updateSchema.parse(req.body);
 
-    if (!isGlobalViewer(req.user!.role)) {
-      const canEdit = await isDepartmentInManagedScope(req.user!.userId, req.user!.role, id);
-      if (!canEdit) {
-        res.status(403).json({ error: 'Недостаточно прав для редактирования этого отдела' });
-        return;
-      }
-    }
-
-    if (data.parentId) {
-      if (data.parentId === id) {
-        res.status(400).json({ error: 'Отдел не может быть родителем самого себя' });
-        return;
-      }
-      if (!(await isDepartmentInManagedScope(req.user!.userId, req.user!.role, data.parentId))) {
-        if (!isGlobalViewer(req.user!.role)) {
-          res.status(403).json({ error: 'Нельзя привязать к этому родительскому отделу' });
-          return;
-        }
-      }
+    if (data.parentId === id) {
+      res.status(400).json({ error: 'Отдел не может быть родителем самого себя' });
+      return;
     }
 
     if (data.name) {
@@ -180,20 +174,12 @@ router.patch('/:id', async (req: AuthRequest, res, next) => {
 
 router.delete('/:id', async (req: AuthRequest, res, next) => {
   try {
-    if (!canManageTeam(req.user!.role)) {
-      res.status(403).json({ error: 'Недостаточно прав' });
+    if (!isGlobalViewer(req.user!.role)) {
+      res.status(403).json({ error: 'Удалять отделы может только директор, HR или администратор' });
       return;
     }
 
     const id = paramId(req);
-
-    if (!isGlobalViewer(req.user!.role)) {
-      const canEdit = await isDepartmentInManagedScope(req.user!.userId, req.user!.role, id);
-      if (!canEdit) {
-        res.status(403).json({ error: 'Недостаточно прав для удаления этого отдела' });
-        return;
-      }
-    }
 
     const usersCount = await prisma.user.count({ where: { departmentId: id } });
     if (usersCount > 0) {

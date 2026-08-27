@@ -199,13 +199,33 @@ router.get('/kanban', async (req: AuthRequest, res, next) => {
       return;
     }
 
-    const where: Record<string, unknown> = { projectId, parentId: null };
-    if (assigneeId) where.assigneeId = String(assigneeId);
-    if (priority) where.priority = String(priority);
+    const where: Record<string, unknown> = {
+      AND: [
+        { projectId, parentId: null },
+        await getTaskAccessWhere(req.user!),
+      ],
+    };
+    if (assigneeId) {
+      where.AND = [
+        ...(where.AND as Record<string, unknown>[]),
+        { assigneeId: String(assigneeId) },
+      ];
+    }
+    if (priority) {
+      where.AND = [
+        ...(where.AND as Record<string, unknown>[]),
+        { priority: String(priority) },
+      ];
+    }
     if (search) {
-      where.OR = [
-        { title: { contains: String(search) } },
-        { description: { contains: String(search) } },
+      where.AND = [
+        ...(where.AND as Record<string, unknown>[]),
+        {
+          OR: [
+            { title: { contains: String(search) } },
+            { description: { contains: String(search) } },
+          ],
+        },
       ];
     }
 

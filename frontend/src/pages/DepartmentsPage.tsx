@@ -28,22 +28,25 @@ export function DepartmentsPage() {
   const [form, setForm] = useState(emptyForm);
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
 
-  const canManage =
+  const canView =
     user?.role === 'ADMIN' ||
     user?.role === 'HR' ||
     isDirectorRole(user?.role) ||
     user?.role === 'MANAGER';
 
+  const canEditStructure =
+    user?.role === 'ADMIN' || user?.role === 'HR' || isDirectorRole(user?.role);
+
   const { data: departments = [], isLoading } = useQuery<Department[]>({
     queryKey: ['departments'],
     queryFn: () => api.getDepartments(),
-    enabled: canManage,
+    enabled: canView,
   });
 
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ['users'],
     queryFn: () => api.getUsers(),
-    enabled: canManage,
+    enabled: canView,
   });
 
   const selectedDept = departments.find((d) => d.id === selectedDeptId) ?? null;
@@ -118,7 +121,7 @@ export function DepartmentsPage() {
     ? departments.filter((d) => d.id !== editing.id)
     : departments;
 
-  if (!canManage) {
+  if (!canView) {
     return <div className="text-muted-foreground">Раздел доступен руководителям и HR</div>;
   }
 
@@ -143,25 +146,27 @@ export function DepartmentsPage() {
                 : 'Руководитель не назначен'}
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setEditing(selectedDept);
-              setShowForm(false);
-              setForm({
-                name: selectedDept.name,
-                parentId: selectedDept.parentId ?? '',
-                headUserId: selectedDept.headUserId ?? '',
-              });
-            }}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Изменить отдел
-          </Button>
+          {canEditStructure && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditing(selectedDept);
+                setShowForm(false);
+                setForm({
+                  name: selectedDept.name,
+                  parentId: selectedDept.parentId ?? '',
+                  headUserId: selectedDept.headUserId ?? '',
+                });
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Изменить отдел
+            </Button>
+          )}
         </div>
 
-        {editing?.id === selectedDept.id && (
+        {canEditStructure && editing?.id === selectedDept.id && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Редактировать отдел</CardTitle>
@@ -275,22 +280,26 @@ export function DepartmentsPage() {
         <div>
           <h1 className="text-2xl font-bold">Отделы</h1>
           <p className="text-muted-foreground">
-            Нажмите на отдел, чтобы увидеть сотрудников. Назначьте руководителя — он увидит только свою команду.
+            {canEditStructure
+              ? 'Нажмите на отдел, чтобы увидеть сотрудников. Назначьте руководителя — он увидит только свою команду.'
+              : 'Ваш отдел и сотрудники. Вы видите только свою команду.'}
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setShowForm(!showForm);
-            setEditing(null);
-            setForm(emptyForm);
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          Добавить
-        </Button>
+        {canEditStructure && (
+          <Button
+            onClick={() => {
+              setShowForm(!showForm);
+              setEditing(null);
+              setForm(emptyForm);
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            Добавить
+          </Button>
+        )}
       </div>
 
-      {(showForm || editing) && (
+      {canEditStructure && (showForm || editing) && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{editing ? 'Редактировать отдел' : 'Новый отдел / подотдел'}</CardTitle>
@@ -383,35 +392,39 @@ export function DepartmentsPage() {
                       <Users className="h-3.5 w-3.5" />
                       Сотрудники
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEditing(d);
-                        setShowForm(false);
-                        setForm({
-                          name: d.name,
-                          parentId: d.parentId ?? '',
-                          headUserId: d.headUserId ?? '',
-                        });
-                      }}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Изменить
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      disabled={isBusy}
-                      onClick={() => {
-                        if (!window.confirm(`Удалить отдел «${d.name}»?`)) return;
-                        deleteMutation.mutate(d.id);
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Удалить
-                    </Button>
+                    {canEditStructure && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditing(d);
+                            setShowForm(false);
+                            setForm({
+                              name: d.name,
+                              parentId: d.parentId ?? '',
+                              headUserId: d.headUserId ?? '',
+                            });
+                          }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Изменить
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          disabled={isBusy}
+                          onClick={() => {
+                            if (!window.confirm(`Удалить отдел «${d.name}»?`)) return;
+                            deleteMutation.mutate(d.id);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Удалить
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>

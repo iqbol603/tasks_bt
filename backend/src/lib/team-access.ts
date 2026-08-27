@@ -44,25 +44,20 @@ export async function getManagedUserIds(userId: string, role: Role | string): Pr
   if (isGlobalViewer(role)) return null;
 
   if (role === 'MANAGER') {
-    let headedDeptIds = await getHeadedDepartmentIds(userId);
-
-    if (!headedDeptIds.length) {
-      const me = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { departmentId: true },
+    const deptIds = await getVisibleDepartmentIds(userId, role);
+    if (!deptIds?.length) {
+      const directReports = await prisma.user.findMany({
+        where: { managerId: userId, isActive: true },
+        select: { id: true },
       });
-      if (me?.departmentId) headedDeptIds = [me.departmentId];
+      return Array.from(new Set([userId, ...directReports.map((u) => u.id)]));
     }
 
-    const deptIds = await getDescendantDepartmentIds(headedDeptIds);
-
     const [usersInDepts, directReports] = await Promise.all([
-      deptIds.length
-        ? prisma.user.findMany({
-            where: { departmentId: { in: deptIds }, isActive: true },
-            select: { id: true },
-          })
-        : Promise.resolve([]),
+      prisma.user.findMany({
+        where: { departmentId: { in: deptIds }, isActive: true },
+        select: { id: true },
+      }),
       prisma.user.findMany({
         where: { managerId: userId, isActive: true },
         select: { id: true },
@@ -75,6 +70,31 @@ export async function getManagedUserIds(userId: string, role: Role | string): Pr
   }
 
   return [userId];
+}
+
+/** Отделы в зоне видимости руководителя. null = все. */
+export async function getVisibleDepartmentIds(
+  userId: string,
+  role: Role | string,
+): Promise<string[] | null> {
+  if (isGlobalViewer(role)) return null;
+
+  if (role === 'MANAGER') {
+    let headedDeptIds = await getHeadedDepartmentIds(userId);
+
+    if (!headedDeptIds.length) {
+      const me = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { departmentId: true },
+      });
+      if (me?.departmentId) headedDeptIds = [me.departmentId];
+    }
+
+    if (!headedDeptIds.length) return [];
+    return getDescendantDepartmentIds(headedDeptIds);
+  }
+
+  return [];
 }
 
 export async function isUserInManagedScope(
@@ -95,16 +115,8 @@ export async function isDepartmentInManagedScope(
   if (isGlobalViewer(actorRole)) return true;
 
   if (actorRole === 'MANAGER') {
-    let headedDeptIds = await getHeadedDepartmentIds(actorId);
-    if (!headedDeptIds.length) {
-      const me = await prisma.user.findUnique({
-        where: { id: actorId },
-        select: { departmentId: true },
-      });
-      if (me?.departmentId) headedDeptIds = [me.departmentId];
-    }
-    const allowed = await getDescendantDepartmentIds(headedDeptIds);
-    return allowed.includes(departmentId);
+    const allowed = await getVisibleDepartmentIds(actorId, actorRole);
+    return !!allowed?.includes(departmentId);
   }
 
   return false;
@@ -117,10 +129,21 @@ export async function getTaskAccessWhere(
   if (isGlobalViewer(user.role)) return {};
 
   const userId = user.userId;
-  const [projectIds, managedUserIds] = await Promise.all([
-    getAccessibleProjectIdsForUser(user),
-    getManagedUserIds(userId, user.role),
-  ]);
+
+  // Руководитель — только свои + задачи своей команды (не весь проект)
+  if (user.role === 'MANAGER') {
+    const managedUserIds = await getManagedUserIds(userId, user.role);
+    const ids = managedUserIds ?? [userId];
+    return {
+      OR: [
+        { assigneeId: { in: ids } },
+        { creatorId: { in: ids } },
+        { watchers: { some: { userId } } },
+      ],
+    };
+  }
+
+  const projectIds = await getAccessibleProjectIdsForUser(user);
 
   const orClauses: Record<string, unknown>[] = [
     { assigneeId: userId },
@@ -130,11 +153,6 @@ export async function getTaskAccessWhere(
 
   if (projectIds.length) {
     orClauses.push({ projectId: { in: projectIds } });
-  }
-
-  if (managedUserIds && managedUserIds.length > 1) {
-    orClauses.push({ assigneeId: { in: managedUserIds } });
-    orClauses.push({ creatorId: { in: managedUserIds } });
   }
 
   return { OR: orClauses };
@@ -203,6 +221,14 @@ export async function canAccessTask(
   if (managed) {
     if (task.assigneeId && managed.includes(task.assigneeId)) return true;
     if (managed.includes(task.creatorId)) return true;
+  }
+
+  // Руководитель не получает доступ ко всем задачам проекта — только к своей команде
+  if (user.role === 'MANAGER') {
+    const watcher = await prisma.taskWatcher.findUnique({
+      where: { taskId_userId: { taskId: task.id, userId } },
+    });
+    return !!watcher;
   }
 
   const projectIds = await getAccessibleProjectIdsForUser(user);

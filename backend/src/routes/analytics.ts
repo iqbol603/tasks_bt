@@ -4,7 +4,7 @@ import { TaskStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { daysAgo, isManagerRole, startOfDay } from '../lib/activity.js';
-import { getManagedUserIds } from '../lib/team-access.js';
+import { getManagedUserIds, isUserInManagedScope } from '../lib/team-access.js';
 
 const router = Router();
 
@@ -154,6 +154,12 @@ router.get('/employees/:id', async (req: AuthRequest, res, next) => {
     }
 
     const userId = String(req.params.id);
+
+    if (!(await isUserInManagedScope(req.user!.userId, req.user!.role, userId))) {
+      res.status(403).json({ error: 'Нет доступа к аналитике этого сотрудника' });
+      return;
+    }
+
     const since30 = daysAgo(30);
 
     const user = await prisma.user.findUnique({
@@ -214,8 +220,14 @@ router.get('/review-queue', async (req: AuthRequest, res, next) => {
       return;
     }
 
+    const managed = await getManagedUserIds(req.user!.userId, req.user!.role);
+
     const tasks = await prisma.task.findMany({
-      where: { status: TaskStatus.REVIEW, parentId: null },
+      where: {
+        status: TaskStatus.REVIEW,
+        parentId: null,
+        ...(managed ? { assigneeId: { in: managed } } : {}),
+      },
       include: {
         assignee: { select: { id: true, firstName: true, lastName: true } },
         project: { select: { id: true, name: true, color: true } },
