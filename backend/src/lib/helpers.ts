@@ -1,6 +1,10 @@
 import { prisma } from '../lib/prisma.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { notifyUser } from './notify.js';
+import {
+  getAccessibleProjectIdsForUser,
+  isGlobalViewer,
+} from './team-access.js';
 
 export { notifyUser as createNotification };
 
@@ -50,33 +54,11 @@ export const taskInclude = {
   _count: { select: { comments: true, subtasks: true } },
 };
 
+/** null = полный доступ (директор, HR, админ); иначе список projectId */
 export async function getAccessibleProjectIds(user: AuthRequest['user']): Promise<string[] | null> {
   if (!user) return [];
 
-  if (['ADMIN', 'DIRECTOR', 'ASSISTANT_DIRECTOR', 'HR', 'MANAGER'].includes(user.role)) {
-    return null;
-  }
+  if (isGlobalViewer(user.role)) return null;
 
-  const [memberships, created, assignedProjects] = await Promise.all([
-    prisma.projectMember.findMany({
-      where: { userId: user.userId },
-      select: { projectId: true },
-    }),
-    prisma.project.findMany({
-      where: { creatorId: user.userId },
-      select: { id: true },
-    }),
-    prisma.task.findMany({
-      where: { assigneeId: user.userId },
-      select: { projectId: true },
-      distinct: ['projectId'],
-    }),
-  ]);
-
-  const ids = new Set([
-    ...memberships.map((m) => m.projectId),
-    ...created.map((p) => p.id),
-    ...assignedProjects.map((t) => t.projectId),
-  ]);
-  return Array.from(ids);
+  return getAccessibleProjectIdsForUser(user);
 }

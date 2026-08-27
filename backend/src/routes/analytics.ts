@@ -4,6 +4,7 @@ import { TaskStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { daysAgo, isManagerRole, startOfDay } from '../lib/activity.js';
+import { getManagedUserIds } from '../lib/team-access.js';
 
 const router = Router();
 
@@ -20,8 +21,14 @@ router.get('/employees', async (req: AuthRequest, res, next) => {
     const since30 = daysAgo(30);
     const now = new Date();
 
+    const managed = await getManagedUserIds(req.user!.userId, req.user!.role);
+
     const employees = await prisma.user.findMany({
-      where: { isActive: true, role: { in: ['EXECUTOR', 'OBSERVER', 'MANAGER'] } },
+      where: {
+        isActive: true,
+        role: { in: ['EXECUTOR', 'OBSERVER', 'MANAGER'] },
+        ...(managed ? { id: { in: managed } } : {}),
+      },
       select: {
         id: true,
         firstName: true,

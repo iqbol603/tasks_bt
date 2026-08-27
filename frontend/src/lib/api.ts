@@ -14,7 +14,11 @@ export interface User {
 export interface Department {
   id: string;
   name: string;
-  _count?: { users: number };
+  parentId?: string | null;
+  headUserId?: string | null;
+  parent?: { id: string; name: string } | null;
+  head?: { id: string; firstName: string; lastName: string } | null;
+  _count?: { users: number; children?: number };
 }
 
 export interface AuthResponse {
@@ -219,17 +223,20 @@ class ApiClient {
     return this.request<Department[]>('/departments');
   }
 
-  createDepartment(name: string) {
+  createDepartment(data: { name: string; parentId?: string | null; headUserId?: string | null }) {
     return this.request<Department>('/departments', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(data),
     });
   }
 
-  updateDepartment(id: string, name: string) {
+  updateDepartment(
+    id: string,
+    data: { name?: string; parentId?: string | null; headUserId?: string | null },
+  ) {
     return this.request<Department>(`/departments/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(data),
     });
   }
 

@@ -49,6 +49,7 @@ model User {
   role         Role     @default(EXECUTOR)
   department   String?
   departmentId String?  @map("department_id")
+  managerId    String?  @map("manager_id")
   telegramChatId String?  @map("telegram_chat_id")
   telegramLinkCode String? @map("telegram_link_code")
   isActive     Boolean  @default(true) @map("is_active")
@@ -56,6 +57,9 @@ model User {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   dept             Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  manager          User?           @relation("UserReports", fields: [managerId], references: [id], onDelete: SetNull)
+  reports          User[]          @relation("UserReports")
+  headedDepartments Department[]   @relation("DepartmentHead")
   createdProjects  Project[]       @relation("ProjectCreator")
   projectMembers   ProjectMember[]
   assignedTasks    Task[]          @relation("TaskAssignee")
@@ -73,13 +77,19 @@ model User {
 }
 
 model Department {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(cuid())
+  name       String   @unique
+  parentId   String?  @map("parent_id")
+  headUserId String?  @map("head_user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
-  users User[]
+  parent   Department?  @relation("DepartmentTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Department[] @relation("DepartmentTree")
+  head     User?        @relation("DepartmentHead", fields: [headUserId], references: [id], onDelete: SetNull)
+  users    User[]
 
+  @@index([parentId])
   @@map("departments")
 }
 

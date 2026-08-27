@@ -16,6 +16,11 @@ import {
 } from '../lib/user-management.js';
 import { getOrCreatePersonalProject, canHavePersonalProject } from '../lib/personal-project.js';
 import { resolveDepartmentFields } from '../lib/departments.js';
+import { ensureManagerHeadsDepartment } from '../lib/department-head.js';
+import {
+  getManagedUserIds,
+  isDepartmentInManagedScope,
+} from '../lib/team-access.js';
 
 const router = Router();
 
@@ -29,6 +34,7 @@ const createSchema = z.object({
   role: z.nativeEnum(Role).default(Role.EXECUTOR),
   department: z.string().optional().nullable(),
   departmentId: z.string().optional().nullable(),
+  managerId: z.string().optional().nullable(),
 });
 
 router.post('/', async (req: AuthRequest, res, next) => {
@@ -43,6 +49,25 @@ router.post('/', async (req: AuthRequest, res, next) => {
     if (req.user!.role === 'MANAGER' && !['EXECUTOR', 'OBSERVER'].includes(data.role)) {
       res.status(403).json({ error: 'Руководитель может создавать только исполнителей и наблюдателей' });
       return;
+    }
+
+    if (data.role === 'MANAGER' && !data.departmentId && !data.department) {
+      res.status(400).json({
+        error: 'Для руководителя нужно выбрать отдел (зону контроля)',
+      });
+      return;
+    }
+
+    if (req.user!.role === 'MANAGER' && data.departmentId) {
+      const allowed = await isDepartmentInManagedScope(
+        req.user!.userId,
+        req.user!.role,
+        data.departmentId,
+      );
+      if (!allowed) {
+        res.status(403).json({ error: 'Нельзя добавить сотрудника в этот отдел' });
+        return;
+      }
     }
 
     const existing = await prisma.user.findUnique({ where: { email: data.email } });
@@ -66,6 +91,10 @@ router.post('/', async (req: AuthRequest, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(data.password, 10);
+    const managerId =
+      data.managerId ??
+      (req.user!.role === 'MANAGER' ? req.user!.userId : null);
+
     const user = await prisma.user.create({
       data: {
         email: data.email,
@@ -75,6 +104,7 @@ router.post('/', async (req: AuthRequest, res, next) => {
         role: data.role,
         department: deptFields.department ?? null,
         departmentId: deptFields.departmentId ?? null,
+        managerId,
       },
     });
 
@@ -82,10 +112,15 @@ router.post('/', async (req: AuthRequest, res, next) => {
       await getOrCreatePersonalProject(user.id, user.role);
     }
 
+    await ensureManagerHeadsDepartment(user.id, user.role, user.departmentId);
+
     res.status(201).json({
       ...pickUser(user),
       departmentId: user.departmentId,
-      message: 'Сотрудник создан. Попросите его привязать Telegram в Настройках.',
+      message:
+        user.role === 'MANAGER' && user.departmentId
+          ? 'Руководитель создан и привязан к отделу. Он видит задачи только своей команды.'
+          : 'Сотрудник создан. Попросите его привязать Telegram в Настройках.',
     });
   } catch (err) {
     next(err);
@@ -97,8 +132,12 @@ router.get('/', async (req: AuthRequest, res, next) => {
     const canSeeTeam = canManageTeam(req.user!.role);
 
     if (!canSeeTeam) {
+      const managed = await getManagedUserIds(req.user!.userId, req.user!.role);
       const users = await prisma.user.findMany({
-        where: { isActive: true },
+        where: {
+          isActive: true,
+          ...(managed ? { id: { in: managed } } : {}),
+        },
         select: {
           id: true,
           email: true,
@@ -115,9 +154,12 @@ router.get('/', async (req: AuthRequest, res, next) => {
       return;
     }
 
+    const managed = await getManagedUserIds(req.user!.userId, req.user!.role);
+
     const users = await prisma.user.findMany({
       where: {
         email: { not: { endsWith: '@removed.local' } },
+        ...(managed ? { id: { in: managed } } : {}),
       },
       orderBy: { lastName: 'asc' },
       select: {
@@ -188,6 +230,7 @@ const updateSchema = z.object({
   lastName: z.string().min(1).optional(),
   department: z.string().optional().nullable(),
   departmentId: z.string().optional().nullable(),
+  managerId: z.string().optional().nullable(),
   role: z.nativeEnum(Role).optional(),
   isActive: z.boolean().optional(),
 });
@@ -241,6 +284,17 @@ router.patch('/:id', async (req: AuthRequest, res, next) => {
     }
 
     if (department !== undefined || departmentId !== undefined) {
+      if (req.user!.role === 'MANAGER' && departmentId) {
+        const allowed = await isDepartmentInManagedScope(
+          req.user!.userId,
+          req.user!.role,
+          departmentId,
+        );
+        if (!allowed) {
+          res.status(403).json({ error: 'Нельзя перенести сотрудника в этот отдел' });
+          return;
+        }
+      }
       try {
         const deptFields = await resolveDepartmentFields({ departmentId, department });
         Object.assign(updateData, deptFields);
@@ -261,6 +315,9 @@ router.patch('/:id', async (req: AuthRequest, res, next) => {
       where: { id },
       data: updateData,
     });
+
+    await ensureManagerHeadsDepartment(user.id, user.role, user.departmentId);
+
     res.json({ ...pickUser(user), departmentId: user.departmentId });
   } catch (err) {
     next(err);

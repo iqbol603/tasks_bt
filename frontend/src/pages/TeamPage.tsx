@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, MessageCircle, Pencil, Ban, CheckCircle, Trash2 } from 'lucide-react';
+import { Plus, MessageCircle, Pencil, Ban, CheckCircle, Trash2, Search } from 'lucide-react';
 import { api, type Department } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -33,6 +33,10 @@ function canManageMember(actorRole: string | undefined, target: TeamMember, self
   return false;
 }
 
+function deptOptionLabel(d: Department): string {
+  return d.parent ? `${d.parent.name} → ${d.name}` : d.name;
+}
+
 const emptyForm = {
   email: '',
   password: '',
@@ -52,6 +56,7 @@ export function TeamPage() {
   const [form, setForm] = useState(emptyForm);
   const [newDeptName, setNewDeptName] = useState('');
   const [showNewDept, setShowNewDept] = useState(false);
+  const [search, setSearch] = useState('');
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'HR' || isDirectorRole(user?.role) || user?.role === 'MANAGER';
   const isFullAdmin = user?.role === 'ADMIN' || user?.role === 'HR' || isDirectorRole(user?.role);
@@ -69,6 +74,25 @@ export function TeamPage() {
     enabled: canManage,
   });
 
+  const filteredMembers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter((m) => {
+      const hay = [
+        m.firstName,
+        m.lastName,
+        `${m.firstName} ${m.lastName}`,
+        `${m.lastName} ${m.firstName}`,
+        m.email,
+        m.department ?? '',
+        ROLE_LABELS[m.role] ?? m.role,
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [members, search]);
+
   const invalidateTeam = () => {
     queryClient.invalidateQueries({ queryKey: ['team'] });
     queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -76,7 +100,7 @@ export function TeamPage() {
   };
 
   const createDeptMutation = useMutation({
-    mutationFn: () => api.createDepartment(newDeptName.trim()),
+    mutationFn: () => api.createDepartment({ name: newDeptName.trim() }),
     onSuccess: (dept) => {
       invalidateTeam();
       setForm((f) => ({ ...f, departmentId: (dept as Department).id }));
@@ -97,11 +121,14 @@ export function TeamPage() {
         role: form.role,
         departmentId: form.departmentId || null,
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       invalidateTeam();
       setShowForm(false);
       setForm(emptyForm);
-      showToast({ title: 'Сотрудник создан', message: '' });
+      showToast({
+        title: 'Сотрудник создан',
+        message: (res as { message?: string })?.message ?? '',
+      });
     },
     onError: (err: Error) => showToast({ title: 'Ошибка', message: err.message }),
   });
@@ -197,9 +224,18 @@ export function TeamPage() {
     deleteMutation.isPending ||
     createDeptMutation.isPending;
 
+  const isManagerRoleSelected = form.role === 'MANAGER';
+  const canSubmit =
+    !!form.email &&
+    !!form.firstName &&
+    !!form.lastName &&
+    (editing || !!form.password) &&
+    !(isManagerRoleSelected && !form.departmentId) &&
+    !isBusy;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Сотрудники</h1>
           <p className="text-muted-foreground">Создание, блокировка и удаление команды</p>
@@ -208,6 +244,16 @@ export function TeamPage() {
           <Plus className="h-4 w-4" />
           Добавить
         </Button>
+      </div>
+
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          className="pl-9"
+          placeholder="Поиск по имени, email, отделу…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {(showForm || editing) && (
@@ -228,7 +274,11 @@ export function TeamPage() {
               />
             )}
             <div className={(isFullAdmin || !editing) ? '' : 'sm:col-span-2'}>
-              <label className="text-xs text-muted-foreground mb-1 block">Отдел</label>
+              <label className="text-xs text-muted-foreground mb-1 block">
+                {isManagerRoleSelected
+                  ? 'Отдел для привязки * (зона контроля руководителя)'
+                  : 'Отдел'}
+              </label>
               <select
                 value={showNewDept ? CREATE_DEPT_VALUE : form.departmentId}
                 onChange={(e) => {
@@ -241,19 +291,26 @@ export function TeamPage() {
                 }}
                 className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
               >
-                <option value="">Без отдела</option>
+                <option value="">
+                  {isManagerRoleSelected ? 'Выберите отдел / подотдел…' : 'Без отдела'}
+                </option>
                 {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                  <option key={d.id} value={d.id}>{deptOptionLabel(d)}</option>
                 ))}
                 <option value={CREATE_DEPT_VALUE}>+ Создать новый отдел…</option>
               </select>
+              {isManagerRoleSelected && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Руководитель увидит задачи только сотрудников этого отдела и его подотделов.
+                </p>
+              )}
             </div>
             {showNewDept && (
               <div className="sm:col-span-2 flex flex-wrap gap-2 items-end">
                 <div className="flex-1 min-w-[180px]">
                   <label className="text-xs text-muted-foreground mb-1 block">Название нового отдела</label>
                   <Input
-                    placeholder="Например: Маркетинг"
+                    placeholder="Например: Маркетинг VoLTE"
                     value={newDeptName}
                     onChange={(e) => setNewDeptName(e.target.value)}
                     autoFocus
@@ -298,11 +355,7 @@ export function TeamPage() {
             <div className="flex gap-2 sm:col-span-2">
               <Button
                 onClick={() => (editing ? updateMutation.mutate() : createMutation.mutate())}
-                disabled={
-                  !form.email || !form.firstName || !form.lastName ||
-                  (!editing && !form.password) ||
-                  isBusy
-                }
+                disabled={!canSubmit}
               >
                 {editing ? 'Сохранить' : 'Создать'}
               </Button>
@@ -316,9 +369,15 @@ export function TeamPage() {
 
       {isLoading ? (
         <div className="text-muted-foreground">Загрузка...</div>
+      ) : filteredMembers.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            {search.trim() ? 'Никого не найдено по запросу' : 'Сотрудников пока нет'}
+          </CardContent>
+        </Card>
       ) : (
         <div className="space-y-2">
-          {members.map((m) => {
+          {filteredMembers.map((m) => {
             const isSelf = m.id === user?.id;
             const canEditMember = canManageMember(user?.role, m, user?.id);
 

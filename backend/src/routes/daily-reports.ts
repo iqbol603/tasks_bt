@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { isManagerRole, startOfDay } from '../lib/activity.js';
+import { getManagedUserIds, isUserInManagedScope } from '../lib/team-access.js';
 import { paramId } from '../lib/params.js';
 
 const router = Router();
@@ -41,16 +42,27 @@ router.get('/', async (req: AuthRequest, res, next) => {
     const reportDate = parseReportDate(req.query.date as string | undefined);
     const userId = req.query.userId as string | undefined;
 
-    if (userId && userId !== req.user!.userId && !isManagerRole(req.user!.role)) {
-      res.status(403).json({ error: 'Недостаточно прав' });
-      return;
+    if (userId && userId !== req.user!.userId) {
+      if (!isManagerRole(req.user!.role)) {
+        res.status(403).json({ error: 'Недостаточно прав' });
+        return;
+      }
+      const allowed = await isUserInManagedScope(req.user!.userId, req.user!.role, userId);
+      if (!allowed) {
+        res.status(403).json({ error: 'Нет доступа к отчётам этого сотрудника' });
+        return;
+      }
     }
+
+    const managed = await getManagedUserIds(req.user!.userId, req.user!.role);
 
     const where: Record<string, unknown> = { reportDate };
     if (userId) {
       where.userId = userId;
     } else if (!isManagerRole(req.user!.role)) {
       where.userId = req.user!.userId;
+    } else if (managed) {
+      where.userId = { in: managed };
     }
 
     const reports = await prisma.dailyReport.findMany({
@@ -70,9 +82,16 @@ router.get('/', async (req: AuthRequest, res, next) => {
 router.get('/history', async (req: AuthRequest, res, next) => {
   try {
     const userId = (req.query.userId as string) || req.user!.userId;
-    if (userId !== req.user!.userId && !isManagerRole(req.user!.role)) {
-      res.status(403).json({ error: 'Недостаточно прав' });
-      return;
+    if (userId !== req.user!.userId) {
+      if (!isManagerRole(req.user!.role)) {
+        res.status(403).json({ error: 'Недостаточно прав' });
+        return;
+      }
+      const allowed = await isUserInManagedScope(req.user!.userId, req.user!.role, userId);
+      if (!allowed) {
+        res.status(403).json({ error: 'Нет доступа к отчётам этого сотрудника' });
+        return;
+      }
     }
 
     const days = parseInt(String(req.query.days ?? '14'), 10);

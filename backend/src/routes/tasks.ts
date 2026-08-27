@@ -5,6 +5,11 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { getAccessibleProjectIds, logTaskHistory, taskInclude } from '../lib/helpers.js';
 import {
+  canAccessTask,
+  canAssignToUser,
+  getTaskAccessWhere,
+} from '../lib/team-access.js';
+import {
   notifyTaskWatchers,
   notifyManagersForReview,
   notifyAssigneeReviewResult,
@@ -120,30 +125,24 @@ router.get('/', async (req: AuthRequest, res, next) => {
         }
       : {};
 
-    // Доступ:
-    // - если есть доступ к проекту → видим задачи проекта
-    // - если нет доступа к проекту, но сотрудник является наблюдателем → всё равно видим эту задачу
-    const accessWhere: Record<string, unknown> = {};
-    if (projectIds) {
-      if (projectId) {
-        if (!projectIds.includes(String(projectId))) {
-          res.status(403).json({ error: 'Нет доступа к проекту' });
-          return;
-        }
-        accessWhere.projectId = String(projectId);
-      } else {
-        accessWhere.OR = [
-          { projectId: { in: projectIds } },
-          { watchers: { some: { userId: req.user!.userId } } },
-        ];
-      }
-    } else if (projectId) {
-      accessWhere.projectId = String(projectId);
-    }
+    // Доступ: свои задачи, задачи команды (для руководителей), проекты, наблюдатель
+    const taskAccessWhere = await getTaskAccessWhere(req.user!);
 
     const where: Record<string, unknown> = {
-      AND: [base, accessWhere, searchWhere].filter((x) => Object.keys(x).length),
+      AND: [base, taskAccessWhere, searchWhere].filter((x) => Object.keys(x).length),
     };
+
+    if (projectId) {
+      const pid = String(projectId);
+      if (projectIds && !projectIds.includes(pid)) {
+        res.status(403).json({ error: 'Нет доступа к проекту' });
+        return;
+      }
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : [where.AND]),
+        { projectId: pid },
+      ].filter(Boolean);
+    }
 
     const tasks = await prisma.task.findMany({
       where,
@@ -165,8 +164,10 @@ router.get('/calendar', async (req: AuthRequest, res, next) => {
       : new Date(from.getFullYear(), from.getMonth() + 1, 0, 23, 59, 59);
 
     const where: Record<string, unknown> = {
-      dueDate: { gte: from, lte: to },
-      parentId: null,
+      AND: [
+        { dueDate: { gte: from, lte: to }, parentId: null },
+        await getTaskAccessWhere(req.user!),
+      ],
     };
     if (projectIds) where.projectId = { in: projectIds };
 
@@ -257,14 +258,9 @@ router.get('/:id', async (req: AuthRequest, res, next) => {
     }
 
     const projectIds = await getAccessibleProjectIds(req.user);
-    if (projectIds && !projectIds.includes(task.projectId)) {
-      const watcher = await prisma.taskWatcher.findUnique({
-        where: { taskId_userId: { taskId: id, userId: req.user!.userId } },
-      });
-      if (!watcher) {
-        res.status(403).json({ error: 'Нет доступа к задаче' });
-        return;
-      }
+    if (!(await canAccessTask(req.user!, task))) {
+      res.status(403).json({ error: 'Нет доступа к задаче' });
+      return;
     }
 
     logActivity(req.user!.userId, 'task_view', 'task', id).catch(() => {});
@@ -311,6 +307,11 @@ router.post('/', async (req: AuthRequest, res, next) => {
       : null;
     if (data.parentId && !parent) {
       res.status(400).json({ error: 'Родительская задача для подзадачи не найдена' });
+      return;
+    }
+
+    if (data.assigneeId && !(await canAssignToUser(req.user!.userId, req.user!.role, data.assigneeId))) {
+      res.status(403).json({ error: 'Нельзя назначить задачу этому сотруднику' });
       return;
     }
 
@@ -378,15 +379,9 @@ router.put('/:id', async (req: AuthRequest, res, next) => {
       return;
     }
 
-    const projectIds = await getAccessibleProjectIds(req.user);
-    if (projectIds && !projectIds.includes(existing.projectId)) {
-      const watcher = await prisma.taskWatcher.findUnique({
-        where: { taskId_userId: { taskId: id, userId: req.user!.userId } },
-      });
-      if (!watcher) {
-        res.status(403).json({ error: 'Нет доступа к задаче' });
-        return;
-      }
+    if (!(await canAccessTask(req.user!, existing))) {
+      res.status(403).json({ error: 'Нет доступа к задаче' });
+      return;
     }
 
     const data = updateSchema.parse(req.body);
@@ -443,6 +438,11 @@ router.put('/:id', async (req: AuthRequest, res, next) => {
 
       const isCreator = existing.creatorId === userId;
       const newAssignee = data.assigneeId ? String(data.assigneeId) : null;
+
+      if (newAssignee && !(await canAssignToUser(userId, req.user!.role, newAssignee))) {
+        res.status(403).json({ error: 'Нельзя назначить задачу этому сотруднику' });
+        return;
+      }
 
       // Не-руководитель не может менять исполнителя чужой задачи/подзадачи
       if (!isManager && !isCreator) {
@@ -591,15 +591,9 @@ router.delete('/:id', async (req: AuthRequest, res, next) => {
       return;
     }
 
-    const projectIds = await getAccessibleProjectIds(req.user);
-    if (projectIds && !projectIds.includes(existing.projectId)) {
-      const watcher = await prisma.taskWatcher.findUnique({
-        where: { taskId_userId: { taskId: id, userId: req.user!.userId } },
-      });
-      if (!watcher) {
-        res.status(403).json({ error: 'Нет доступа к задаче' });
-        return;
-      }
+    if (!(await canAccessTask(req.user!, existing))) {
+      res.status(403).json({ error: 'Нет доступа к задаче' });
+      return;
     }
 
     const isManager = isManagerRole(req.user!.role);

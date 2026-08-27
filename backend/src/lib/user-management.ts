@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import type { Role, User } from '@prisma/client';
 import { prisma } from './prisma.js';
+import { isUserInManagedScope } from './team-access.js';
 
 const DELETED_EMAIL_SUFFIX = '@removed.local';
 
@@ -90,6 +91,8 @@ export async function deleteUserAccount(userId: string): Promise<void> {
       where: { requestedAssigneeId: userId },
       data: { requestedAssigneeId: null, isAssignmentApproved: true },
     });
+    await tx.user.updateMany({ where: { managerId: userId }, data: { managerId: null } });
+    await tx.department.updateMany({ where: { headUserId: userId }, data: { headUserId: null } });
     await tx.user.update({
       where: { id: userId },
       data: {
@@ -99,6 +102,7 @@ export async function deleteUserAccount(userId: string): Promise<void> {
         lastName: 'Сотрудник',
         department: null,
         departmentId: null,
+        managerId: null,
         avatarUrl: null,
         telegramChatId: null,
         telegramLinkCode: null,
@@ -128,6 +132,13 @@ export async function assertCanModifyUser(
 
   if (!canManageTargetUser(actorRole, target)) {
     throw new Error('FORBIDDEN');
+  }
+
+  if (actorRole === 'MANAGER') {
+    const inScope = await isUserInManagedScope(actorId, actorRole, targetId);
+    if (!inScope) {
+      throw new Error('FORBIDDEN');
+    }
   }
 
   if (target.role === 'ADMIN' && target.isActive) {
